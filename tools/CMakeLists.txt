@@ -45,6 +45,9 @@ if (build)
   PCL_ADD_EXECUTABLE (pcl_pcd2vtk ${SUBSYS_NAME} pcd2vtk.cpp)
   target_link_libraries (pcl_pcd2vtk pcl_common pcl_io)
 
+  PCL_ADD_EXECUTABLE (pcl_ptx2pcd ${SUBSYS_NAME} ptx2pcd.cpp)
+  target_link_libraries (pcl_ptx2pcd pcl_common pcl_io)
+
   PCL_ADD_EXECUTABLE (pcl_vfh_estimation ${SUBSYS_NAME} vfh_estimation.cpp)
   target_link_libraries (pcl_vfh_estimation pcl_common pcl_io pcl_features pcl_kdtree)
   

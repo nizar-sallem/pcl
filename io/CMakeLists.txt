@@ -130,6 +130,7 @@ if(build)
         src/lzf_image_io.cpp
         src/obj_io.cpp
         src/ifs_io.cpp
+	src/ptx_io.cpp
         src/image_grabber.cpp
         src/hdl_grabber.cpp
         src/robot_eye_grabber.cpp
@@ -170,6 +171,7 @@ if(build)
         include/pcl/${SUBSYS_NAME}/obj_io.h
         include/pcl/${SUBSYS_NAME}/ascii_io.h
         include/pcl/${SUBSYS_NAME}/ifs_io.h
+        include/pcl/${SUBSYS_NAME}/ptx_io.h
         include/pcl/${SUBSYS_NAME}/image_grabber.h 
         include/pcl/${SUBSYS_NAME}/hdl_grabber.h
         include/pcl/${SUBSYS_NAME}/robot_eye_grabber.h
@@ -178,7 +180,7 @@ if(build)
         ${OPENNI_GRABBER_INCLUDES}
         ${DINAST_GRABBER_INCLUDES}
         ${FZAPI_GRABBER_INCLUDES}
-		${PXC_GRABBER_INCLUDES}
+	${PXC_GRABBER_INCLUDES}
         )
 
     set(compression_incs
@@ -204,6 +206,7 @@ if(build)
 
     set(impl_incs 
         include/pcl/${SUBSYS_NAME}/impl/pcd_io.hpp
+        include/pcl/${SUBSYS_NAME}/impl/ptx_io.hpp
         include/pcl/${SUBSYS_NAME}/impl/lzf_image_io.hpp
         include/pcl/${SUBSYS_NAME}/impl/synchronized_queue.hpp
         include/pcl/${SUBSYS_NAME}/impl/point_cloud_image_extractors.hpp
