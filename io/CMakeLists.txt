@@ -118,6 +118,17 @@ if(build)
     PCL_ADD_LIBRARY(pcl_io_ply ${SUBSYS_NAME} ${PLY_SOURCES} ${PLY_INCLUDES})
     PCL_ADD_INCLUDES(${SUBSYS_NAME} ${SUBSYS_NAME}/ply ${PLY_INCLUDES})
 
+    find_package(OpenJPEG2)
+    if(OpenJPEG2_FOUND)
+      include_directories(${OpenJPEG2_INCLUDE_DIRS})
+      file(GLOB LEICA_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/leica/*.cpp")
+      set(LEICA_IO_SOURCES ${LEICA_SOURCES} src/leica_io.cpp)
+      file(GLOB LEICA_INCLUDES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "include/pcl/${SUBSYS_NAME}/leica/*.h")
+      set(LEICA_IO_INCLUDES ${LEICA_INCLUDES} include/pcl/${SUBSYS_NAME}/leica_io.h)
+      file(GLOB LEICA_INCLUDES_IMPL RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "include/pcl/${SUBSYS_NAME}/leica/impl/*.hpp")
+      set(LEICA_IO_INCLUDES_IMPL ${LEICA_INCLUDES_IMPL})
+    endif(OpenJPEG2_FOUND)
+
     set(srcs 
         src/debayer.cpp
         src/pcd_grabber.cpp
@@ -138,7 +149,8 @@ if(build)
         ${OPENNI_GRABBER_SOURCES}
         ${DINAST_GRABBER_SOURCES}
         ${FZAPI_GRABBER_SOURCES}
-		${PXC_GRABBER_SOURCES}
+	${PXC_GRABBER_SOURCES}
+	${LEICA_IO_SOURCES}
         )
     if(PNG_FOUND)
       set(srcs
@@ -147,11 +159,11 @@ if(build)
           )
     endif(PNG_FOUND)
 
-	if(PCAP_FOUND)
-	  set(PCAP_DEFINES -DHAVE_PCAP)
-          include_directories(${PCAP_INCLUDE_DIRS})
-	  add_definitions(${PCAP_DEFINES})
-	endif(PCAP_FOUND)
+    if(PCAP_FOUND)
+      set(PCAP_DEFINES -DHAVE_PCAP)
+      include_directories(${PCAP_INCLUDE_DIRS})
+      add_definitions(${PCAP_DEFINES})
+    endif(PCAP_FOUND)
 
     set(incs 
         include/pcl/${SUBSYS_NAME}/boost.h
@@ -181,6 +193,7 @@ if(build)
         ${DINAST_GRABBER_INCLUDES}
         ${FZAPI_GRABBER_INCLUDES}
 	${PXC_GRABBER_INCLUDES}
+	${LEICA_IO_INCLUDES}
         )
 
     set(compression_incs
@@ -213,6 +226,7 @@ if(build)
         include/pcl/compression/impl/entropy_range_coder.hpp
         include/pcl/compression/impl/octree_pointcloud_compression.hpp
         ${VTK_IO_INCLUDES_IMPL}
+	${LEICA_IO_INCLUDES_IMPL}
        )
     if(PNG_FOUND AND OPENNI_FOUND)
      set(impl_incs
@@ -242,9 +256,9 @@ if(build)
 	
     if(FZAPI_FOUND)
       target_link_libraries(${LIB_NAME} ${FZAPI_LIBS})
-	  if(WIN32)
-		target_link_libraries(${LIB_NAME} Version.lib)
-  	  endif(WIN32)
+      if(WIN32)
+	target_link_libraries(${LIB_NAME} Version.lib)
+      endif(WIN32)
     endif(FZAPI_FOUND)
 	
 	if(PXCAPI_FOUND)
@@ -257,6 +271,15 @@ if(build)
     endif(PCAP_FOUND)
 
     set(EXT_DEPS eigen3)
+    if(OPENNI_FOUND)
+      list(APPEND EXT_DEPS openni-dev)
+    endif(OPENNI_FOUND)
+    
+    if(OPENJPEG2_FOUND)
+      target_link_libraries(${LIB_NAME} ${OpenJPEG2_LIBRARY})
+      list(APPEND EXT_DEPS openjpeg2)
+    endif(OPENJPEG2_FOUND)
+
     PCL_MAKE_PKGCONFIG(${LIB_NAME} ${SUBSYS_NAME} "${SUBSYS_DESC}"
       "${SUBSYS_DEPS}" "${EXT_DEPS}" "" "" "")
 
