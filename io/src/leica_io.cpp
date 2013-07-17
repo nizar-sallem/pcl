@@ -1134,8 +1134,13 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   // Compute the total size of the fields
   for (size_t i = 0; i < cloud.fields.size (); ++i)
   {
-    if (cloud.fields[i].name == "_" || cloud.fields[i].name == "rgb" || cloud.fields[i].name == "rgba")
+    if (cloud.fields[i].name == "_")
       continue;
+    
+    if ((cloud.fields[i].name == "rgb") || (cloud.fields[i].name == "rgba"))
+    {
+      rgb_index = nri;
+    }
       
     fields_sizes[nri] = cloud.fields[i].count * pcl::getFieldSize (cloud.fields[i].datatype);
     fsize += fields_sizes[nri];
@@ -1182,7 +1187,11 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     }
   }
 
-  char* temp_buf = static_cast<char*> (malloc (static_cast<size_t> (static_cast<float> (data_size) * 1.5f + 8.0f)));
+  // if RGB is present remove it from the data to be compressed
+  if (rgb_index > -1)
+    data_size -= cloud.width * cloud.height * fields_sizes[rgb_index];
+  
+  char* temp_buf = static_cast<char*> (malloc (static_cast<std::size_t> (static_cast<float> (data_size) * 1.5f + 8.0f)));
   // Compress the valid data
   unsigned int compressed_size = pcl::lzfCompress (only_valid_data, 
                                                    static_cast<unsigned int> (data_size), 
@@ -1198,7 +1207,7 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     oss.flush ();
     data_idx = oss.tellp ();
 
-    char *header = &temp_buf[0];
+    char *header = &otemp_buf[0];
     memcpy (&header[0], &compressed_size, sizeof (unsigned int));
     memcpy (&header[4], &data_size, sizeof (unsigned int));
     data_size = compressed_size + 8;
@@ -1213,6 +1222,7 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     throw pcl::IOException ("[leica::PTXWriter::writeBinaryCompressed] Error during compression!");
     return (-1);
   }
+
 
 #ifndef _WIN32
   // Stretch the file size to the size of the data
@@ -1289,27 +1299,48 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     std::size_t point_size = cloud.data.size () / nr_points;
 
     opj_cparameters_t parameters;	/* compression parameters */
-    std::string image_file = file_path.stem () + ".jp2";
-    parameters.outfile = image_file.c_str ();
-    opj_stream_t *l_stream = 00;
-    opj_codec_t* l_codec = 00;
     opj_image_t *image = NULL;
     raw_cparameters_t raw_cp;
-    
-    OPJ_BOOL is_success;
-    OPJ_BOOL use_tiles = OPJ_FALSE; /* OPJ_TRUE */
-    OPJ_UINT32 l_nb_tiles = 4;
+    /*
+      configure the event callbacks (not required)
+      setting of each callback is optionnal
+    */
+    memset(&event_mgr, 0, sizeof(opj_event_mgr_t));
+    event_mgr.error_handler = error_callback;
+    event_mgr.warning_handler = warning_callback;
+    event_mgr.info_handler = info_callback;
 
     /* set encoding parameters to default values */
     opj_set_default_encoder_parameters (&parameters);
-    color_space = OPJ_CLRSPC_SRGB;/* RGB, RGBA */
-    w = cloud.width;
-    h = cloud.height;
-    memset (&cmptparm[0], 0, numcomps * sizeof (opj_image_cmptparm_t));
-    
-    numcomps = (cloud.fields[rgb_index].name == "rgba") ? 4 : 3;
-    subsampling_dx = parameters->subsampling_dx;
-    subsampling_dy = parameters->subsampling_dy;
+
+    /* Create comment for codestream */
+    if(parameters.cp_comment == NULL) 
+    {
+      const char comment[] = "Created by OpenJPEG version ";
+      const size_t clen = strlen(comment);
+      const char *version = opj_version();
+/* UniPG>> */
+#ifdef USE_JPWL
+      parameters.cp_comment = (char*)malloc(clen+strlen(version)+11);
+      sprintf(parameters.cp_comment,"%s%s with JPWL", comment, version);
+#else
+      parameters.cp_comment = (char*)malloc(clen+strlen(version)+1);
+      sprintf(parameters.cp_comment,"%s%s", comment, version);
+#endif
+/* <<UniPG */
+    }
+
+    OPJ_COLOR_SPACE color_space = OPJ_CLRSPC_SRGB;/* RGB, RGBA */
+    int i, compno;
+    opj_image_cmptparm_t cmptparm[4];	/* maximum of 4 components */
+    opj_image_t *image = NULL;
+    char value;
+    int w = cloud.width;
+    int h = cloud.height;
+    int numcomps = (cloud.fields[rgb_index].name == "rgba") ? 4 : 3;
+    int subsampling_dx = parameters->subsampling_dx;
+    int subsampling_dy = parameters->subsampling_dy;
+    bool is_success = false;
     
     for (int i = 0; i < numcomps; i++) 
     {
@@ -1331,21 +1362,19 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     /* set image offset and reference grid */
     image->x0 = parameters->image_offset_x0;
     image->y0 = parameters->image_offset_y0;
-    image->x1 =	!image->x0 ? (image_width - 1) * subsampling_dx + 1 : image->x0 + (image_width - 1) * subsampling_dx + 1;
-    image->y1 =	!image->y0 ? (image_height - 1) * subsampling_dy + 1 : image->y0 + (image_height - 1) * subsampling_dy + 1;
+    image->x1 = parameters->image_offset_x0 + (w - 1) *	subsampling_dx + 1;
+    image->y1 = parameters->image_offset_y0 + (h - 1) *	subsampling_dy + 1;
     
     /* set image data */
-    for (y=0; y < image_height; y++) 
-    {
-      int index = y*image_width;
-      
+    for (int y=0; y < h; y++) 
+    { 
       if (numcomps==3)
       {
-        for (x=0; x<image_width; x++) 
+        for (int x=0; x < w; x++) 
         {
-          std::size_t i = index + x;
+          std::size_t index = y*w + x;
           pcl::RGB color;
-          memcpy (&color, &cloud.data[i * cloud.point_size + cloud.fields[rgb_index].offset + (total) * sizeof (unsigned int)], sizeof (pcl::RGB));
+          memcpy (&color, &cloud.data[index * cloud.point_size + cloud.fields[rgb_index].offset + (total) * sizeof (unsigned int)], sizeof (pcl::RGB));
           unsigned char r = color.r;
           unsigned char g = color.g;
           unsigned char b = color.b;
@@ -1353,16 +1382,15 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
           image->comps[0].data[index]=r;
           image->comps[1].data[index]=g;
           image->comps[2].data[index]=b;
-          index++;
         }
       }
       else if (numcomps==4)
       {
         for (x=0; x<image_width; x++) 
         {
-          std::size_t i = index + x;
+          std::size_t index = y*w + x;
           pcl::RGB color;
-          memcpy (&color, &cloud.data[i * point_size + cloud.fields[rgb_index].offset + (total) * sizeof (unsigned int)], sizeof (pcl::RGB));
+          memcpy (&color, &cloud.data[index * point_size + cloud.fields[rgb_index].offset + (total) * sizeof (unsigned int)], sizeof (pcl::RGB));
           unsigned char r = color.r;
           unsigned char g = color.g;
           unsigned char b = color.b;
@@ -1372,7 +1400,6 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
           image->comps[1].data[index]=g;
           image->comps[2].data[index]=b;
           image->comps[3].data[index]=a;
-          index++;
         }
       }
     }
@@ -1386,9 +1413,39 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
 		/* Decide if MCT should be used */
 		parameters.tcp_mct = image->numcomps == 3 ? 1 : 0;
     // nizar set to JPEG2 compressed image data
-    parameters.cod_format = JP2_CFMT;
-    l_codec = opj_create_compress (OPJ_CODEC_JP2);
+    parameters.cod_format = J2K_CFMT;
+    int codestream_length;
+    opj_cio_t *cio = NULL;
+
+    /* get a JP2 compressor handle */
+    opj_cinfo_t* cinfo = opj_create_compress(CODEC_J2K);
     
+    /* catch events using our callbacks and give a local context */
+    opj_set_event_mgr((opj_common_ptr)cinfo, &event_mgr, stderr);			
+    
+    /* setup the encoder parameters using the current image and using user parameters */
+    opj_setup_encoder(cinfo, &parameters, image);
+    
+    /* open a byte stream for writing */
+    /* allocate memory for all tiles */
+    cio = opj_cio_open((opj_common_ptr)cinfo, NULL, 0);
+
+    is_success = opj_encode(cinfo, cio, image, NULL);
+
+    if (!is_success)
+    {
+      opj_cio_close(cio);
+      PCL_ERROR ("failed to encode image\n");
+      return (-1);
+    }
+    codestream_length = cio_tell (cio);
+    // write out
+
+    opj_destroy_compress(cinfo);
+    
+    /* free image data */
+    opj_image_destroy(image);
+
     /* catch events using our callbacks and give a local context */		
 		opj_set_info_handler (l_codec, info_callback,00);
 		opj_set_warning_handler (l_codec, warning_callback,00);
