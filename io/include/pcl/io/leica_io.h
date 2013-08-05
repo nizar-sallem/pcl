@@ -33,14 +33,13 @@
  *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id$
- *
  */
 #ifndef PCL_IO_LEICA_IO_H
 #define PCL_IO_LEICA_IO_H
 
 #include <pcl/io/leica/ptx_cloud.h>
 #include <pcl/io/leica/ptx_cloud_data.h>
+#include <pcl/io/file_io.h>
 
 namespace leica
 {
@@ -77,7 +76,7 @@ namespace leica
       readHeader (const std::string &file_name, sensor_msgs::PTXCloudData &cloud, 
                   Eigen::Vector4f &origin, Eigen::Quaternionf &orientation, Eigen::Affine3f& transformation,
                   int &data_type, std::size_t &data_idx,
-                  std::size_t &image_idx, int& image_type);
+                  std::size_t &image_idx, int& image_type, std::size_t& image_size);
       int
       read (const std::string &file_name, sensor_msgs::PTXCloudData &cloud,
             Eigen::Vector4f &origin, Eigen::Quaternionf &orientation, Eigen::Affine3f& transformation,
@@ -85,7 +84,9 @@ namespace leica
 
       int
       readBinary (const std::string& file_name, sensor_msgs::PTXCloudData& cloud, 
-                  std::size_t data_offset, int image_type);
+                  int data_type, std::size_t data_offset, 
+                  int image_type, std::size_t image_size,
+                  unsigned int nr_points);
     
     private:
       /** Tokenizes file \a fs line \a line into a vector of strings \a st possibly
@@ -105,8 +106,32 @@ namespace leica
   class PTXWriter
   {
     public:
-      PTXWriter () {}
+      PTXWriter ()
+        : map_synchronization_(false) {}
+
       ~PTXWriter () {}
+
+      /** \brief Set whether mmap() synchornization via msync() is desired before munmap() calls. 
+        * Setting this to true could prevent NFS data loss (see
+        * http://www.pcl-developers.org/PCD-IO-consistency-on-NFS-msync-needed-td4885942.html).
+        * Default: false
+        * \note This option should be used by advanced users only!
+        * \note Please note that using msync() on certain systems can reduce the I/O performance by up to 80%!
+        * \param[in] sync set to true if msync() should be called before munmap()
+        */
+      void
+      setMapSynchronization (bool sync)
+      {
+        map_synchronization_ = sync;
+      }
+
+      std::string writeHeader (const sensor_msgs::PTXCloudData& cloud, 
+                               const Eigen::Vector4d& origin, 
+                               const Eigen::Quaterniond& orientation, 
+                               const Eigen::Affine3d& transformation, 
+                               int data_type, 
+                               bool& with_rgb);
+    
 
       int writeASCII (const std::string &file_name, 
                       const sensor_msgs::PTXCloudData &cloud, 
@@ -129,7 +154,33 @@ namespace leica
                                const Eigen::Quaterniond &orientation,
                                const Eigen::Affine3d& transformation);
     
+    private:
+
+      void
+      setLockingPermissions (const std::string &file_name, 
+                             boost::interprocess::file_lock &lock);
+    
+
+      void
+      resetLockingPermissions (const std::string &file_name,
+                               boost::interprocess::file_lock &lock);
+
+      /** \brief Set to true if msync() should be called before munmap(). Prevents data loss on NFS systems. */
+      bool map_synchronization_;
   };
+
+  /** warning callback expecting a FILE* client object */
+  void 
+  error_callback (const char *msg, void *client_data);
+  
+  /** warning callback expecting a FILE* client object */
+  void 
+  warning_callback (const char *msg, void *client_data);
+  
+  /** debug callback expecting no client object */
+  void 
+  info_callback (const char *msg, void *client_data);
+
 }
 
 #endif
