@@ -245,7 +245,7 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
   // Data type
   if (tokenizeNextLine (fs, line, st, 1))
   {
-    PCL_ERROR ("[leica::PTXReader::readHeader] error reading data_type!\n");
+    PCL_ERROR ("[leica::PTXReader::readHeader] error reading data_type: %s %s!\n", st[0].c_str (), st[st.size () - 1].c_str ());
     fs.close ();
     return (-1);
   }
@@ -276,7 +276,7 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
   cloud.fields[2].offset = static_cast<pcl::uint32_t> (sizeof (float));
   cloud.fields[2].datatype = sensor_msgs::PointField::FLOAT32; 
   cloud.fields[2].count = 1;
-  cloud.fields[3].name = "intensity";
+  cloud.fields[3].name = "i";
   cloud.fields[3].offset = static_cast<pcl::uint32_t> (sizeof (float));
   cloud.fields[3].datatype = sensor_msgs::PointField::FLOAT32; 
   cloud.fields[3].count = 1;
@@ -332,7 +332,7 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
     }
     std::cout << "image_encoding " << st[0] << " : " << image_type << std::endl;
     // add RGB
-    if (image_type == 0)
+    if (image_type == 0 || image_type == 2)
     {
       cloud.image_encoding = st[0];
       cloud.fields.resize (5);
@@ -341,16 +341,6 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
       cloud.fields[4].count = 1;
       cloud.fields[4].offset = cloud.point_step;
       cloud.point_step+= static_cast<pcl::uint32_t> (sizeof (float));
-    }
-    else
-    {
-      if (tokenizeNextLine (fs, line, st, 1))
-      {
-        PCL_ERROR ("[leica::PTXReader::readHeader] error JP2K file name!\n");
-        fs.close ();
-        return (-1);
-      }
-      cloud.image_encoding = st[0]; 
     }
   }
   
@@ -888,7 +878,7 @@ leica::PTXWriter::writeHeader (const sensor_msgs::PTXCloudData &cloud,
     return ("");
   }
   
-  if (cloud.fields[3].name == "rgb" || cloud.fields[3].name == "rgba")
+  if (cloud.fields[4].name == "rgb" || cloud.fields[3].name == "rgba")
     with_rgb = true;
   
   std::ostringstream oss;
@@ -1179,6 +1169,7 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
                                          const Eigen::Quaterniond &orientation,
                                          const Eigen::Affine3d& transformation)
 {
+  std::cout << "writeBinaryCompressed" << std::endl;
   if (cloud.data.empty ())
   {
     PCL_ERROR ("[leica::PTXWriter::writeBinaryCompressed] Input point cloud has no data!\n");
@@ -1237,7 +1228,7 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   }
   fields_sizes.resize (nri);
   fields.resize (nri);
- 
+  std::cout <<  "I am here" << std::endl;
   // Compute the size of data
   if (rgb_index == -1)
     data_size = cloud.width * cloud.height * fsize;
@@ -1314,7 +1305,10 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   int codestream_length = 0;
   opj_cio_t *cio = NULL;
   opj_cinfo_t* cinfo = NULL;
+  opj_codestream_info_t compression_info;
   
+  std::cout << "numcomps " << numcomps << std::endl;
+  std::cout << "with_rgb " << with_rgb << std::endl;
   if (with_rgb)
   {
     for (int i = 0; i < numcomps; i++) 
@@ -1327,10 +1321,12 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
       cmptparm[i].w = w;
       cmptparm[i].h = h;
     }
-    
+    std::cout << "creating image " << std::endl;
     /* create the image */
+    std::cout << "image size " << sizeof (*image) << std::endl;
     image = opj_image_create (numcomps, &cmptparm[0], color_space);
-    
+    std::cout << "image size after " << sizeof (*image) << std::endl;
+    std::cout << "image created" << std::endl;
     if (!image) 
     {
 			PCL_ERROR ("Unable to create image structure!\n");
@@ -1404,7 +1400,11 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     /* allocate memory for all tiles */
     cio = opj_cio_open((opj_common_ptr)cinfo, NULL, 0);
 
-    is_image_compressed = opj_encode(cinfo, cio, image, NULL);
+    is_image_compressed = opj_encode_with_info (cinfo, cio, image, &compression_info);
+    std::cout << "compression_info" << std::endl;
+    std::cout << "main_head_start " << compression_info.main_head_start << std::endl;
+    std::cout << "main_head_end " << compression_info.main_head_end << std::endl;
+    std::cout << "codestream_size " << compression_info.codestream_size << std::endl;
 
     if (!is_image_compressed)
     {
@@ -1413,6 +1413,8 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
       return (-1);
     }
     codestream_length = cio_tell (cio);
+    std::cout << "codestream_length " << codestream_length << std::endl;
+//    opj_destroy_cstr_info (&compression_info);
   }
 
   char* temp_buf = static_cast<char*> (malloc (static_cast<std::size_t> (static_cast<float> (data_size) * 1.5f + 8.0f)));
