@@ -140,19 +140,20 @@ namespace leica
                       const Eigen::Affine3d& transformation,
                       int precision);
     
-    int writeBinary (const std::string &file_name, 
-                     const sensor_msgs::PTXCloudData &cloud, 
-                     const Eigen::Vector4d &origin, 
-                     const Eigen::Quaterniond &orientation, 
-                     const Eigen::Affine3d& transformation,
-                     const int precision);
+      int writeBinary (const std::string &file_name, 
+                       const sensor_msgs::PTXCloudData &cloud, 
+                       const Eigen::Vector4d &origin, 
+                       const Eigen::Quaterniond &orientation, 
+                       const Eigen::Affine3d& transformation,
+                       const int precision);
     
   
-    int writeBinaryCompressed (const std::string &file_name, 
-                               const sensor_msgs::PTXCloudData &cloud,
-                               const Eigen::Vector4d &origin, 
-                               const Eigen::Quaterniond &orientation,
-                               const Eigen::Affine3d& transformation);
+      int writeBinaryCompressed (const std::string &file_name, 
+                                 const sensor_msgs::PTXCloudData &cloud,
+                                 const Eigen::Vector4d &origin, 
+                                 const Eigen::Quaterniond &orientation,
+                                 const Eigen::Affine3d& transformation,
+                                 bool debug_image = false);
     
     private:
 

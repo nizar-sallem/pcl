@@ -44,6 +44,8 @@
 #include <pcl/io/leica_io.h>
 #include <openjpeg.h>
 #include <pcl/console/time.h>
+#include <iostream>
+#include <iomanip>
 
 #include <boost/version.hpp>
 #include <boost/lexical_cast.hpp>
@@ -265,7 +267,7 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
   // X Y Z I
   cloud.fields.resize (4);
   cloud.fields[0].name = "x"; 
-  cloud.fields[0].offset = static_cast<pcl::uint32_t> (sizeof (float));
+  cloud.fields[0].offset = 0;
   cloud.fields[0].datatype = sensor_msgs::PointField::FLOAT32; 
   cloud.fields[0].count = 1;
   cloud.fields[1].name = "y";
@@ -273,11 +275,11 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
   cloud.fields[1].datatype = sensor_msgs::PointField::FLOAT32; 
   cloud.fields[1].count = 1;
   cloud.fields[2].name = "z";
-  cloud.fields[2].offset = static_cast<pcl::uint32_t> (sizeof (float));
+  cloud.fields[2].offset = 2 * static_cast<pcl::uint32_t> (sizeof (float));
   cloud.fields[2].datatype = sensor_msgs::PointField::FLOAT32; 
   cloud.fields[2].count = 1;
   cloud.fields[3].name = "i";
-  cloud.fields[3].offset = static_cast<pcl::uint32_t> (sizeof (float));
+  cloud.fields[3].offset = 3 * static_cast<pcl::uint32_t> (sizeof (float));
   cloud.fields[3].datatype = sensor_msgs::PointField::FLOAT32; 
   cloud.fields[3].count = 1;
   cloud.point_step = 4 * 1 * static_cast<pcl::uint32_t> (sizeof (float));
@@ -635,7 +637,14 @@ leica::PTXReader::readBinary (const std::string& file_name, sensor_msgs::PTXClou
         memcpy (&cloud.data[i * fsize + fields[j].offset], pters[j], fields_sizes[j]);
         // Increment the pointer
         pters[j] += fields_sizes[j];
+        if (i < 10)
+        {
+          float val;
+          memcpy (&val, pters[j], sizeof (float));
+          std::cout << val << " ";
+        }
       }
+      std::cout << std::endl;
     }
     //memcpy (&cloud.data[0], &buf[0], uncompressed_size);
 
@@ -1167,7 +1176,8 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
                                          const sensor_msgs::PTXCloudData &cloud,
                                          const Eigen::Vector4d &origin, 
                                          const Eigen::Quaterniond &orientation,
-                                         const Eigen::Affine3d& transformation)
+                                         const Eigen::Affine3d& transformation,
+                                         bool debug_image)
 {
   std::cout << "writeBinaryCompressed" << std::endl;
   if (cloud.data.empty ())
@@ -1273,6 +1283,14 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   /* set encoding parameters to default values */
   opj_set_default_encoder_parameters (&parameters);
   
+	/* if no rate entered, lossless by default */
+	if (parameters.tcp_numlayers == 0) 
+  {
+		parameters.tcp_rates[0] = 0;	/* MOD antonin : losslessbug */
+		parameters.tcp_numlayers++;
+		parameters.cp_disto_alloc = 1;
+	}
+
   /* Create comment for codestream */
   if(parameters.cp_comment == NULL) 
   {
@@ -1289,18 +1307,15 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
 #endif
 /* <<UniPG */
   }
-  
+
   // RGB data prep
   OPJ_COLOR_SPACE color_space = CLRSPC_SRGB;/* RGB, RGBA */
-  int i, compno;
-  opj_image_cmptparm_t cmptparm[4];	/* maximum of 4 components */
+  opj_image_cmptparm_t cmptparm[3];	
   opj_image_t *image = NULL;
   char value;
   int w = cloud.width;
   int h = cloud.height;
-  int numcomps = (fields[rgb_index].name == "rgba") ? 4 : 3;
-  int subsampling_dx = parameters.subsampling_dx;
-  int subsampling_dy = parameters.subsampling_dy;
+  int numcomps = 3;
   bool is_image_compressed = false;
   int codestream_length = 0;
   opj_cio_t *cio = NULL;
@@ -1311,22 +1326,21 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   std::cout << "with_rgb " << with_rgb << std::endl;
   if (with_rgb)
   {
+    std::cout << "rgb_index " << rgb_index << std::endl;
+    /* initialize image components */
+    memset(&cmptparm[0], 0, 3 * sizeof(opj_image_cmptparm_t));
     for (int i = 0; i < numcomps; i++) 
     {
       cmptparm[i].prec = 8;
       cmptparm[i].bpp = 8;
       cmptparm[i].sgnd = 0;
-      cmptparm[i].dx = subsampling_dx;
-      cmptparm[i].dy = subsampling_dy;
+      cmptparm[i].dx = parameters.subsampling_dx;
+      cmptparm[i].dy = parameters.subsampling_dy;
       cmptparm[i].w = w;
       cmptparm[i].h = h;
     }
-    std::cout << "creating image " << std::endl;
     /* create the image */
-    std::cout << "image size " << sizeof (*image) << std::endl;
     image = opj_image_create (numcomps, &cmptparm[0], color_space);
-    std::cout << "image size after " << sizeof (*image) << std::endl;
-    std::cout << "image created" << std::endl;
     if (!image) 
     {
 			PCL_ERROR ("Unable to create image structure!\n");
@@ -1336,9 +1350,9 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     /* set image offset and reference grid */
     image->x0 = parameters.image_offset_x0;
     image->y0 = parameters.image_offset_y0;
-    image->x1 = parameters.image_offset_x0 + (w - 1) *	subsampling_dx + 1;
-    image->y1 = parameters.image_offset_y0 + (h - 1) *	subsampling_dy + 1;
-    
+    image->x1 = parameters.image_offset_x0 + (w - 1) * parameters.subsampling_dx + 1;
+    image->y1 = parameters.image_offset_y0 + (h - 1) * parameters.subsampling_dy + 1;
+
     // Go over all the points, and copy the data in the appropriate places
     for (size_t i = 0; i < cloud.width * cloud.height; ++i)
     {
@@ -1352,38 +1366,23 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
         }
         else
         {
-          if (numcomps==3)
-          {            
-            pcl::RGB color;
-            memcpy (&color, &cloud.data[i * cloud.point_step + fields[j].offset], sizeof (pcl::RGB));
-            unsigned char r = color.r;
-            unsigned char g = color.g;
-            unsigned char b = color.b;
-            
-            image->comps[0].data[i]=r;
-            image->comps[1].data[i]=g;
-            image->comps[2].data[i]=b;
-          }
-          else if (numcomps==4)
-          {
-            pcl::RGB color;
-            memcpy (&color, &cloud.data[i * cloud.point_step + fields[j].offset], sizeof (pcl::RGB));
-            unsigned char r = color.r;
-            unsigned char g = color.g;
-            unsigned char b = color.b;
-            unsigned char a = color.a;
+          int32_t rgb;
+          memcpy (&rgb, &cloud.data[i * cloud.point_step + fields[rgb_index].offset], sizeof (int32_t));
+          rgb = rgb >> 1;
+          uint8_t r = (rgb >> 16) & 0x0000ff;
+          uint8_t g = (rgb >> 8)  & 0x0000ff;
+          uint8_t b = (rgb)       & 0x0000ff;
           
-            image->comps[0].data[i]=r;
-            image->comps[1].data[i]=g;
-            image->comps[2].data[i]=b;
-            image->comps[3].data[i]=a;
-          }
+          image->comps[0].data[i]=r;
+          image->comps[1].data[i]=g;
+          image->comps[2].data[i]=b;
         }
       }
     }
-
+    
 		/* Decide if MCT should be used */
-		parameters.tcp_mct = image->numcomps == 3 ? 1 : 0;
+    parameters.tcp_mct = image->numcomps == 3 ? 1 : 0;
+
     // nizar set to JPEG2 compressed image data
     parameters.cod_format = J2K_CFMT;
 
@@ -1413,8 +1412,20 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
       return (-1);
     }
     codestream_length = cio_tell (cio);
-    std::cout << "codestream_length " << codestream_length << std::endl;
-//    opj_destroy_cstr_info (&compression_info);
+
+    if (debug_image)
+    {
+      /* write the buffer to disk */
+      FILE *image_file = NULL;
+      image_file = fopen("image.j2k", "wb");
+      if (!image_file) 
+      {
+        fprintf(stderr, "failed to open \"image.j2k\" for writing\n");
+        return (1);
+      }
+      fwrite(cio->buffer, 1, codestream_length, image_file);
+      fclose(image_file);
+    }
   }
 
   char* temp_buf = static_cast<char*> (malloc (static_cast<std::size_t> (static_cast<float> (data_size) * 1.5f + 8.0f)));
@@ -1497,6 +1508,7 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   {
     // Write out RGB
     memcpy (&map[data_size + data_idx], cio->buffer, codestream_length);
+    
     /* close and free the byte stream */
     opj_cio_close(cio);
     /* free info*/
