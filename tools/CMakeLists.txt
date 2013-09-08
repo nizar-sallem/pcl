@@ -48,6 +48,12 @@ if (build)
   PCL_ADD_EXECUTABLE (pcl_ptx2pcd ${SUBSYS_NAME} ptx2pcd.cpp)
   target_link_libraries (pcl_ptx2pcd pcl_common pcl_io)
 
+  PCL_ADD_EXECUTABLE (pcl_leica2pcd ${SUBSYS_NAME} leica2pcd.cpp)
+  target_link_libraries (pcl_leica2pcd pcl_common pcl_io)
+
+  PCL_ADD_EXECUTABLE (leica_ascii2binary ${SUBSYS_NAME} convert_ptx_ascii_to_binary.cpp)
+  target_link_libraries (leica_ascii2binary pcl_common pcl_io)
+
   PCL_ADD_EXECUTABLE (pcl_vfh_estimation ${SUBSYS_NAME} vfh_estimation.cpp)
   target_link_libraries (pcl_vfh_estimation pcl_common pcl_io pcl_features pcl_kdtree)
   
