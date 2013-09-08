@@ -92,7 +92,7 @@ saveCloud (const std::string &filename, const sensor_msgs::PTXCloudData &cloud, 
       writer.writeLZFCompressed (filename, cloud, Eigen::Vector4d::Zero (), Eigen::Quaterniond::Identity (), Eigen::Affine3d::Identity ());
       break;
     case 2 : 
-      writer.writeBinaryCompressed (filename, cloud, Eigen::Vector4d::Zero (), Eigen::Quaterniond::Identity (), Eigen::Affine3d::Identity (), true);
+      writer.writeBinaryCompressed (filename, cloud, Eigen::Vector4d::Zero (), Eigen::Quaterniond::Identity (), Eigen::Affine3d::Identity (), false);
       break;
     default : print_error ("Unknown format %d!\n", format);
   }  
