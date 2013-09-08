@@ -107,7 +107,8 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
   transformation = Eigen::Affine3f::Identity ();
   cloud.width = cloud.height = cloud.point_step = cloud.row_step = 0;
   cloud.data.clear ();
-
+  image_size = 0;
+  
   // By default, assume that there are _no_ invalid (e.g., NaN) points
   //cloud.is_dense = true;
   if (file_name == "" || !boost::filesystem::exists (file_name))
@@ -339,7 +340,7 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
       cloud.image_encoding = st[0];
       cloud.fields.resize (5);
       cloud.fields[4].name = "rgb";
-      cloud.fields[4].datatype = sensor_msgs::PointField::FLOAT32; 
+      cloud.fields[4].datatype = sensor_msgs::PointField::FLOAT32;
       cloud.fields[4].count = 1;
       cloud.fields[4].offset = cloud.point_step;
       cloud.point_step+= static_cast<pcl::uint32_t> (sizeof (float));
@@ -593,7 +594,10 @@ leica::PTXReader::readBinary (const std::string& file_name, sensor_msgs::PTXClou
     {
       PCL_WARN ("[leica::PTXReader::read] The estimated cloud.data size (%u) is different than the saved uncompressed value (%u)! Data corruption?\n", 
                 cloud.data.size (), uncompressed_size);
-      cloud.data.resize (uncompressed_size);
+      if (image_size == 0)
+        cloud.data.resize (uncompressed_size);
+      else
+        cloud.data.resize (uncompressed_size + cloud.width * cloud.height * sizeof (uint32_t));
     }
 
     char *buf = new char [data_size];
@@ -610,14 +614,34 @@ leica::PTXReader::readBinary (const std::string& file_name, sensor_msgs::PTXClou
     // Get the fields sizes
     std::vector<sensor_msgs::PointField> fields (cloud.fields.size ());
     std::vector<int> fields_sizes (cloud.fields.size ());
-    int nri = 0, fsize = 0;
-    for (size_t i = 0; i < cloud.fields.size (); ++i)
+    int nri = 0, fsize = 0, rgb_idx = -1;
+    if (image_type == 0)
     {
-      fields_sizes[nri] = cloud.fields[i].count * pcl::getFieldSize (cloud.fields[i].datatype);
-      fsize += fields_sizes[nri];
-      fields[nri] = cloud.fields[i];
-      ++nri;
+      for (size_t i = 0; i < cloud.fields.size (); ++i)
+      {
+        fields_sizes[nri] = cloud.fields[i].count * pcl::getFieldSize (cloud.fields[i].datatype);
+        fsize += fields_sizes[nri];
+        fields[nri] = cloud.fields[i];
+        ++nri;
+      }
     }
+    else
+    {
+      for (size_t i = 0; i < cloud.fields.size (); ++i)
+      {
+        if ((cloud.fields[i].name == "rgb") || (cloud.fields[i].name == "rgba"))
+        {
+          rgb_idx = i;
+          continue;
+        }
+        
+        fields_sizes[nri] = cloud.fields[i].count * pcl::getFieldSize (cloud.fields[i].datatype);
+        fsize += fields_sizes[nri];
+        fields[nri] = cloud.fields[i];
+        ++nri;
+      }
+    }
+    
     fields.resize (nri);
     fields_sizes.resize (nri);
 
@@ -637,161 +661,128 @@ leica::PTXReader::readBinary (const std::string& file_name, sensor_msgs::PTXClou
         memcpy (&cloud.data[i * fsize + fields[j].offset], pters[j], fields_sizes[j]);
         // Increment the pointer
         pters[j] += fields_sizes[j];
-        if (i < 10)
+      }
+    }
+    delete[] buf;
+
+    // If JPEG 2000 compression is used
+    if (image_type == 2)
+    {
+      // decompression parameters
+      opj_event_mgr_t event_mgr;		/* event manager */
+      opj_dparameters_t parameters;
+      opj_image_t* image = NULL;
+      int file_length;
+      opj_dinfo_t* dinfo = NULL;	/* handle to a decompressor */
+      opj_cio_t *cio = NULL;
+      opj_codestream_info_t cstr_info;  /* Codestream information structure */
+      
+      // Configure the event callbacks
+      memset(&event_mgr, 0, sizeof (opj_event_mgr_t));
+      event_mgr.error_handler = error_callback;
+      event_mgr.warning_handler = warning_callback;
+      event_mgr.info_handler = info_callback;
+      
+      // Set decoding parameters to default values 
+      opj_set_default_decoder_parameters (&parameters);
+
+      // Decode the code-stream 
+      parameters.decod_format = J2K_CFMT;
+
+      /* get a decoder handle */
+      dinfo = opj_create_decompress (CODEC_J2K);
+      
+      /* catch events using our callbacks and give a local context */
+      opj_set_event_mgr ((opj_common_ptr)dinfo, &event_mgr, stderr);
+      
+      /* setup the decoder decoding parameters using user parameters */
+      opj_setup_decoder (dinfo, &parameters);
+
+      /* open a byte stream */
+      unsigned char* umap = (unsigned char*) (&map[0]);
+      
+      cio = opj_cio_open ((opj_common_ptr)dinfo, umap + data_offset + cloud.image_offset, image_size);
+
+      /* decode the stream and fill the image structure */
+      image = opj_decode (dinfo, cio);
+      
+      if(!image) 
+      {
+        PCL_ERROR ("[leica::PTXReader::read]: failed to decode image!\n");
+        opj_destroy_decompress(dinfo);
+        opj_cio_close(cio);
+        return (-1);
+      }
+      
+      if (image->numcomps >= 3 && image->comps[0].dx == image->comps[1].dx
+          && image->comps[1].dx == image->comps[2].dx
+          && image->comps[0].dy == image->comps[1].dy
+          && image->comps[1].dy == image->comps[2].dy
+          && image->comps[0].prec == image->comps[1].prec
+          && image->comps[1].prec == image->comps[2].prec) 
+      {
+        int w = int_ceildiv(image->x1 - image->x0, image->comps[0].dx);
+        int wr = image->comps[0].w;
+      
+        int h = int_ceildiv(image->y1 - image->y0, image->comps[0].dy);
+        int hr = image->comps[0].h;
+	    
+        int max = image->comps[0].prec > 8 ? 255 : (1 << image->comps[0].prec) - 1;
+	    
+        image->comps[0].x0 = int_ceildivpow2(image->comps[0].x0 - int_ceildiv(image->x0, image->comps[0].dx), image->comps[0].factor);
+        image->comps[0].y0 = int_ceildivpow2(image->comps[0].y0 -	int_ceildiv(image->y0, image->comps[0].dy), image->comps[0].factor);
+      
+        int adjustR = 0, adjustG = 0, adjustB = 0;
+
+        if (image->comps[0].prec > 8) 
         {
-          float val;
-          memcpy (&val, pters[j], sizeof (float));
-          std::cout << val << " ";
+          adjustR = image->comps[0].prec - 8;
+          printf("PNM CONVERSION: Truncating component 0 from %d bits to 8 bits\n", image->comps[0].prec);
+        }
+
+        if (image->comps[1].prec > 8) 
+        {
+          adjustG = image->comps[1].prec - 8;
+          printf("PNM CONVERSION: Truncating component 1 from %d bits to 8 bits\n", image->comps[1].prec);
+        }
+
+        if (image->comps[2].prec > 8)
+        {
+          adjustB = image->comps[2].prec - 8;
+          printf("PNM CONVERSION: Truncating component 2 from %d bits to 8 bits\n", image->comps[2].prec);
+        }
+
+        for (int i = 0; i < wr * hr; i++)
+        {
+          int r, g, b;
+          pcl::RGB rgba;
+          r = image->comps[0].data[i];
+          r += (image->comps[0].sgnd ? 1 << (image->comps[0].prec - 1) : 0);
+          rgba.r = (unsigned char) ((r >> adjustR)+((r >> (adjustR-1))%2));
+        
+          g = image->comps[1].data[i];
+          g += (image->comps[1].sgnd ? 1 << (image->comps[1].prec - 1) : 0);
+          rgba.g = (unsigned char) ((g >> adjustG)+((g >> (adjustG-1))%2));
+        
+          b = image->comps[2].data[i];
+          b += (image->comps[2].sgnd ? 1 << (image->comps[2].prec - 1) : 0);
+          rgba.b = (unsigned char) ((b >> adjustB)+((b >> (adjustB-1))%2));
+        
+          memcpy (&cloud.data[i * cloud.point_step + cloud.fields[rgb_idx].offset], &rgba, sizeof (pcl::RGB));
         }
       }
-      std::cout << std::endl;
-    }
-    //memcpy (&cloud.data[0], &buf[0], uncompressed_size);
 
-    delete[] buf;
+      /* free remaining structures */
+      if(dinfo) 
+        opj_destroy_decompress(dinfo);
+      
+      /* free image data structure */
+      opj_image_destroy(image);
+    }
   }
   else
     // Copy the data
     memcpy (&cloud.data[0], &map[0] + data_offset, cloud.data.size ());
-
-  // If JPEG 2000 compression is used
-  if (image_type == 2)
-  {
-    assert (cloud.image_offset > data_offset);
-    // Add the rgb field
-    cloud.fields.resize (5);
-    sensor_msgs::PointField rgb_field;
-    rgb_field.name = "rgb";
-    rgb_field.datatype = sensor_msgs::PointField::FLOAT32;
-    rgb_field.count = 1;
-    rgb_field.offset = data_size + cloud.point_step;
-    cloud.fields.push_back (rgb_field);
-    cloud.point_step+= static_cast<pcl::uint32_t> (sizeof (float));
-
-    // decompression parameters
-    opj_event_mgr_t event_mgr;		/* event manager */
-    opj_dparameters_t parameters;
-    opj_image_t* image = NULL;
-    int file_length;
-    opj_dinfo_t* dinfo = NULL;	/* handle to a decompressor */
-    opj_cio_t *cio = NULL;
-    opj_codestream_info_t cstr_info;  /* Codestream information structure */
-
-    // Configure the event callbacks
-    memset(&event_mgr, 0, sizeof (opj_event_mgr_t));
-    event_mgr.error_handler = error_callback;
-    event_mgr.warning_handler = warning_callback;
-    event_mgr.info_handler = info_callback;
-
-    // Set decoding parameters to default values 
-    opj_set_default_decoder_parameters (&parameters);
-
-		// Decode the code-stream 
-    parameters.decod_format = J2K_CFMT;
-
-    /* get a decoder handle */
-    dinfo = opj_create_decompress (CODEC_J2K);
-    
-    /* catch events using our callbacks and give a local context */
-    opj_set_event_mgr ((opj_common_ptr)dinfo, &event_mgr, stderr);
-    
-    /* setup the decoder decoding parameters using user parameters */
-    opj_setup_decoder (dinfo, &parameters);
-
-    /* open a byte stream */
-    unsigned char* umap = (unsigned char*) (&map[0]);
-    
-    cio = opj_cio_open ((opj_common_ptr)dinfo, umap + data_offset + cloud.image_offset, image_size);
-
-    /* decode the stream and fill the image structure */
-    image = opj_decode (dinfo, cio);
-
-    if(!image) 
-    {
-      PCL_ERROR ("[leica::PTXReader::read]: failed to decode image!\n");
-      opj_destroy_decompress(dinfo);
-      opj_cio_close(cio);
-      return (-1);
-    }
-    
-    // Resize cloud data
-    std::size_t data_size = cloud.data.size ();
-    cloud.data.resize (cloud.data.size () + cloud.width * cloud.height * sizeof (float));
-
-    if (image->numcomps >= 3 && image->comps[0].dx == image->comps[1].dx
-        && image->comps[1].dx == image->comps[2].dx
-        && image->comps[0].dy == image->comps[1].dy
-        && image->comps[1].dy == image->comps[2].dy
-        && image->comps[0].prec == image->comps[1].prec
-        && image->comps[1].prec == image->comps[2].prec) 
-    {
-      int w = int_ceildiv(image->x1 - image->x0, image->comps[0].dx);
-      int wr = image->comps[0].w;
-      
-      int h = int_ceildiv(image->y1 - image->y0, image->comps[0].dy);
-      int hr = image->comps[0].h;
-	    
-      int max = image->comps[0].prec > 8 ? 255 : (1 << image->comps[0].prec) - 1;
-	    
-      image->comps[0].x0 = int_ceildivpow2(image->comps[0].x0 - int_ceildiv(image->x0, image->comps[0].dx), image->comps[0].factor);
-      image->comps[0].y0 = int_ceildivpow2(image->comps[0].y0 -	int_ceildiv(image->y0, image->comps[0].dy), image->comps[0].factor);
-      
-      int adjustR = 0, adjustG = 0, adjustB = 0, adjustA = 0;
-
-      if (image->comps[0].prec > 8) 
-      {
-        adjustR = image->comps[0].prec - 8;
-        printf("PNM CONVERSION: Truncating component 0 from %d bits to 8 bits\n", image->comps[0].prec);
-      }
-
-      if (image->comps[1].prec > 8) 
-      {
-        adjustG = image->comps[1].prec - 8;
-        printf("PNM CONVERSION: Truncating component 1 from %d bits to 8 bits\n", image->comps[1].prec);
-      }
-
-      if (image->comps[2].prec > 8)
-      {
-        adjustB = image->comps[2].prec - 8;
-        printf("PNM CONVERSION: Truncating component 2 from %d bits to 8 bits\n", image->comps[2].prec);
-      }
-
-      if (image->comps[3].prec > 8)
-      {
-        adjustA = image->comps[3].prec - 8;
-        printf("PNM CONVERSION: Truncating component 3 from %d bits to 8 bits\n", image->comps[3].prec);
-      }
-      
-      for (int i = 0; i < wr * hr; i++)
-      {
-        int r, g, b, a;
-        pcl::RGB rgba;
-        r = image->comps[0].data[i];
-        r += (image->comps[0].sgnd ? 1 << (image->comps[0].prec - 1) : 0);
-        rgba.r = (unsigned char) ((r >> adjustR)+((r >> (adjustR-1))%2));
-        
-        g = image->comps[1].data[i];
-        g += (image->comps[1].sgnd ? 1 << (image->comps[1].prec - 1) : 0);
-        rgba.g = (unsigned char) ((g >> adjustG)+((g >> (adjustG-1))%2));
-        
-        b = image->comps[2].data[i];
-        b += (image->comps[2].sgnd ? 1 << (image->comps[2].prec - 1) : 0);
-        rgba.b = (unsigned char) ((b >> adjustB)+((b >> (adjustB-1))%2));
-        
-        a = image->comps[3].data[i];
-        a += (image->comps[3].sgnd ? 1 << (image->comps[3].prec - 1) : 0);
-        rgba.a = (unsigned char) ((a >> adjustA)+((a >> (adjustA-1))%2));
-        memcpy (&cloud.data[data_size + i * sizeof (pcl::RGB)], &rgba, sizeof (pcl::RGB));
-      }
-    }
-    
-		/* free remaining structures */
-		if(dinfo) 
-			opj_destroy_decompress(dinfo);
-
-		/* free image data structure */
-		opj_image_destroy(image);
-  }
   
   // Unmap the pages of memory
 #ifdef _WIN32
@@ -887,7 +878,7 @@ leica::PTXWriter::writeHeader (const sensor_msgs::PTXCloudData &cloud,
     return ("");
   }
   
-  if (cloud.fields[4].name == "rgb" || cloud.fields[3].name == "rgba")
+  if ((cloud.fields.size () > 4) && (cloud.fields[4].name == "rgb" || cloud.fields[4].name == "rgba"))
     with_rgb = true;
   
   std::ostringstream oss;
@@ -895,7 +886,7 @@ leica::PTXWriter::writeHeader (const sensor_msgs::PTXCloudData &cloud,
   
   oss << cloud.width << "\n";
   oss << cloud.height << "\n";
-  oss << origin[0] << origin[1] << origin[2] << "\n";
+  oss << origin[0] << " " << origin[1] << " " << origin[2] << "\n";
   Eigen::Matrix3d ort_mtx = orientation.matrix ();
   oss << ort_mtx (0,0) << " " << ort_mtx (0,1) << " " << ort_mtx (0,2) << "\n";
   oss << ort_mtx (1,0) << " " << ort_mtx (1,1) << " " << ort_mtx (1,2) << "\n";
@@ -1172,6 +1163,209 @@ leica::PTXWriter::writeBinary (const std::string &file_name,
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int
+leica::PTXWriter::writeLZFCompressed (const std::string &file_name, 
+                                      const sensor_msgs::PTXCloudData &cloud,
+                                      const Eigen::Vector4d &origin, 
+                                      const Eigen::Quaterniond &orientation,
+                                      const Eigen::Affine3d& transformation)
+{
+  if (cloud.data.empty ())
+  {
+    PCL_ERROR ("[leica::PTXWriter::writeBinaryCompressed] Input point cloud has no data!\n");
+    return (-1);
+  }
+
+  bool with_rgb = false;
+  std::streamoff data_idx = 0;
+  std::ostringstream oss;
+  oss.imbue (std::locale::classic ());
+
+  oss << writeHeader (cloud, origin, orientation, transformation, 2, with_rgb);
+  if (!with_rgb)
+    oss << "-1\n";
+  else
+    oss << "0\nbgr8\n";    
+  oss.flush ();
+  data_idx = oss.tellp ();
+
+#ifdef _WIN32
+  HANDLE h_native_file = CreateFile (file_name.c_str (), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (h_native_file == INVALID_HANDLE_VALUE)
+  {
+    PCL_ERROR ("[leica::PTXWriter::writeBinaryCompressed] Error during CreateFile (%s)!\n", file_name.c_str ());
+    return (-1);
+  }
+#else
+  int fd = pcl_open (file_name.c_str (), O_RDWR | O_CREAT | O_TRUNC, static_cast<mode_t> (0600));
+  if (fd < 0)
+  {
+    PCL_ERROR ("[leica::PTXWriter::writeBinaryCompressed] Error during open (%s)!\n", file_name.c_str ());
+    return (-1);
+  }
+#endif
+  // Mandatory lock file
+  boost::interprocess::file_lock file_lock;
+  setLockingPermissions (file_name, file_lock);
+
+  size_t fsize = 0;
+  size_t data_size = 0;
+  size_t nri = 0;
+  std::vector<sensor_msgs::PointField> fields (cloud.fields.size ());
+  std::vector<int> fields_sizes (cloud.fields.size ());
+  // Compute the total size of the fields
+  for (size_t i = 0; i < cloud.fields.size (); ++i)
+  {
+    if (cloud.fields[i].name == "_")
+      continue;
+    
+    fields_sizes[nri] = cloud.fields[i].count * pcl::getFieldSize (cloud.fields[i].datatype);
+    fsize += fields_sizes[nri];
+    fields[nri] = cloud.fields[i];
+    ++nri;
+  }
+  fields_sizes.resize (nri);
+  fields.resize (nri);
+ 
+  // Compute the size of data
+  data_size = cloud.width * cloud.height * fsize;
+
+  //////////////////////////////////////////////////////////////////////
+  // Empty array holding only the valid data
+  // data_size = nr_points * point_size 
+  //           = nr_points * (sizeof_field_1 + sizeof_field_2 + ... sizeof_field_n)
+  //           = sizeof_field_1 * nr_points + sizeof_field_2 * nr_points + ... sizeof_field_n * nr_points
+  char *only_valid_data = static_cast<char*> (malloc (data_size));
+
+  // Convert the XYZRGBXYZRGB structure to XXYYZZRGBRGB to aid compression. For
+  // this, we need a vector of fields.size () (4 in this case), which points to
+  // each individual plane:
+  //   pters[0] = &only_valid_data[offset_of_plane_x];
+  //   pters[1] = &only_valid_data[offset_of_plane_y];
+  //   pters[2] = &only_valid_data[offset_of_plane_z];
+  //   pters[3] = &only_valid_data[offset_of_plane_RGB];
+  //
+  std::vector<char*> pters (fields.size ());
+  int toff = 0;
+  for (size_t i = 0; i < pters.size (); ++i)
+  {
+    pters[i] = &only_valid_data[toff];
+    toff += fields_sizes[i] * cloud.width * cloud.height;
+  }
+  
+  // Go over all the points, and copy the data in the appropriate places
+  for (size_t i = 0; i < cloud.width * cloud.height; ++i)
+  {
+    for (size_t j = 0; j < pters.size (); ++j)
+    {
+      memcpy (pters[j], &cloud.data[i * cloud.point_step + fields[j].offset], fields_sizes[j]);
+      // Increment the pointer
+      pters[j] += fields_sizes[j];
+    }
+  }
+
+  char* temp_buf = static_cast<char*> (malloc (static_cast<size_t> (static_cast<float> (data_size) * 1.5f + 8.0f)));
+  // Compress the valid data
+  unsigned int compressed_size = pcl::lzfCompress (only_valid_data, 
+                                                   static_cast<unsigned int> (data_size), 
+                                                   &temp_buf[8], 
+                                                   static_cast<unsigned int> (static_cast<float> (data_size) * 1.5f));
+  unsigned int compressed_final_size = 0;
+  // Was the compression successful?
+  if (compressed_size)
+  {
+    char *header = &temp_buf[0];
+    memcpy (&header[0], &compressed_size, sizeof (unsigned int));
+    memcpy (&header[4], &data_size, sizeof (unsigned int));
+    data_size = compressed_size + 8;
+    compressed_final_size = static_cast<unsigned int> (data_size + data_idx);
+  }
+  else
+  {
+#ifndef _WIN32
+    pcl_close (fd);
+#endif
+    resetLockingPermissions (file_name, file_lock);
+    throw pcl::IOException ("[pcl::PCDWriter::writeBinaryCompressed] Error during compression!");
+    return (-1);
+  }
+
+#ifndef _WIN32
+  // Stretch the file size to the size of the data
+  off_t result = pcl_lseek (fd, getpagesize () + data_size - 1, SEEK_SET);
+  if (result < 0)
+  {
+    pcl_close (fd);
+    resetLockingPermissions (file_name, file_lock);
+    PCL_ERROR ("[pcl::PCDWriter::writeBinaryCompressed] lseek errno: %d strerror: %s\n", errno, strerror (errno));
+    PCL_ERROR ("[pcl::PCDWriter::writeBinaryCompressed] Error during lseek ()!\n");
+    return (-1);
+  }
+  // Write a bogus entry so that the new file size comes in effect
+  result = static_cast<int> (::write (fd, "", 1));
+  if (result != 1)
+  {
+    pcl_close (fd);
+    resetLockingPermissions (file_name, file_lock);
+    PCL_ERROR ("[pcl::PCDWriter::writeBinaryCompressed] Error during write ()!\n");
+    return (-1);
+  }
+#endif
+
+  // Prepare the map
+#ifdef _WIN32
+  HANDLE fm = CreateFileMapping (h_native_file, NULL, PAGE_READWRITE, 0, compressed_final_size, NULL);
+  char *map = static_cast<char*> (MapViewOfFile (fm, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, compressed_final_size));
+  CloseHandle (fm);
+
+#else
+  char *map = static_cast<char*> (mmap (0, compressed_final_size, PROT_WRITE, MAP_SHARED, fd, 0));
+  if (map == reinterpret_cast<char*> (-1))    // MAP_FAILED
+  {
+    pcl_close (fd);
+    resetLockingPermissions (file_name, file_lock);
+    PCL_ERROR ("[pcl::PCDWriter::writeBinaryCompressed] Error during mmap ()!\n");
+    return (-1);
+  }
+#endif
+
+  // copy header
+  memcpy (&map[0], oss.str ().c_str (), static_cast<size_t> (data_idx));
+  // Copy the compressed data
+  memcpy (&map[data_idx], temp_buf, data_size);
+
+#ifndef _WIN32
+  // If the user set the synchronization flag on, call msync
+  if (map_synchronization_)
+    msync (map, compressed_final_size, MS_SYNC);
+#endif
+
+  // Unmap the pages of memory
+#ifdef _WIN32
+    UnmapViewOfFile (map);
+#else
+  if (munmap (map, (compressed_final_size)) == -1)
+  {
+    pcl_close (fd);
+    resetLockingPermissions (file_name, file_lock);
+    PCL_ERROR ("[pcl::PCDWriter::writeBinaryCompressed] Error during munmap ()!\n");
+    return (-1);
+  }
+#endif
+  // Close file
+#ifdef _WIN32
+  CloseHandle (h_native_file);
+#else
+  pcl_close (fd);
+#endif
+  resetLockingPermissions (file_name, file_lock);
+
+  free (only_valid_data);
+  free (temp_buf);
+  return (0);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+int
 leica::PTXWriter::writeBinaryCompressed (const std::string &file_name, 
                                          const sensor_msgs::PTXCloudData &cloud,
                                          const Eigen::Vector4d &origin, 
@@ -1228,7 +1422,8 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     
     if ((cloud.fields[i].name == "rgb") || (cloud.fields[i].name == "rgba"))
     {
-      rgb_index = nri;
+      rgb_index = i;
+      continue;
     }
       
     fields_sizes[nri] = cloud.fields[i].count * pcl::getFieldSize (cloud.fields[i].datatype);
@@ -1238,12 +1433,19 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   }
   fields_sizes.resize (nri);
   fields.resize (nri);
-  std::cout <<  "I am here" << std::endl;
+
+  std::vector<char*> pters;
   // Compute the size of data
   if (rgb_index == -1)
+  {
+    pters = std::vector<char*> (fields.size ());
     data_size = cloud.width * cloud.height * fsize;
+  }
   else
+  {
     data_size = cloud.width * cloud.height * (fsize - fields_sizes[rgb_index]);
+    pters = std::vector<char*> (fields.size () - 1);
+  }
   //////////////////////////////////////////////////////////////////////
   // Empty array holding only the valid data
   // data_size = nr_points * point_size 
@@ -1259,16 +1461,24 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   //   pters[2] = &only_valid_data[offset_of_plane_z];
   //   pters[3] = &only_valid_data[offset_of_plane_RGB];
   //
-  std::vector<char*> pters (fields.size ());
   int toff = 0;
   for (size_t i = 0; i < pters.size (); ++i)
   {
-    if (i == rgb_index)
-      continue;
     pters[i] = &only_valid_data[toff];
     toff += fields_sizes[i] * cloud.width * cloud.height;
+  }  
+
+  // Go over all the points, and copy the data in the appropriate places
+  for (size_t i = 0; i < cloud.width * cloud.height; ++i)
+  {
+    for (size_t j = 0; j < pters.size (); ++j)
+    {
+      memcpy (pters[j], &cloud.data[i * cloud.point_step + fields[j].offset], fields_sizes[j]);
+      // Increment the pointer
+      pters[j] += fields_sizes[j];
+    }
   }
-  
+    
   opj_cparameters_t parameters;	/* compression parameters */
   opj_event_mgr_t event_mgr;		/* event manager */
   /*
@@ -1353,30 +1563,21 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     image->x1 = parameters.image_offset_x0 + (w - 1) * parameters.subsampling_dx + 1;
     image->y1 = parameters.image_offset_y0 + (h - 1) * parameters.subsampling_dy + 1;
 
-    // Go over all the points, and copy the data in the appropriate places
+    size_t rgb_offset = cloud.fields[rgb_index].offset;
     for (size_t i = 0; i < cloud.width * cloud.height; ++i)
     {
       for (size_t j = 0; j < pters.size (); ++j)
       {
-        if (j != rgb_index)
-        {
-          memcpy (pters[j], &cloud.data[i * cloud.point_step + fields[j].offset], fields_sizes[j]);
-          // Increment the pointer
-          pters[j] += fields_sizes[j];
-        }
-        else
-        {
-          int32_t rgb;
-          memcpy (&rgb, &cloud.data[i * cloud.point_step + fields[rgb_index].offset], sizeof (int32_t));
-          rgb = rgb >> 1;
-          uint8_t r = (rgb >> 16) & 0x0000ff;
-          uint8_t g = (rgb >> 8)  & 0x0000ff;
-          uint8_t b = (rgb)       & 0x0000ff;
-          
-          image->comps[0].data[i]=r;
-          image->comps[1].data[i]=g;
-          image->comps[2].data[i]=b;
-        }
+        int32_t rgb;
+        memcpy (&rgb, &cloud.data[i * cloud.point_step + rgb_offset], sizeof (int32_t));
+        rgb = rgb >> 1;
+        uint8_t r = (rgb >> 16) & 0x0000ff;
+        uint8_t g = (rgb >> 8)  & 0x0000ff;
+        uint8_t b = (rgb)       & 0x0000ff;
+        
+        image->comps[0].data[i]=r;
+        image->comps[1].data[i]=g;
+        image->comps[2].data[i]=b;
       }
     }
     
@@ -1444,7 +1645,7 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     data_size = compressed_size + 8;
     compressed_final_size = static_cast<unsigned int> (data_size + data_idx);
     if (is_image_compressed)
-      oss << compressed_final_size << "\njp2k " << codestream_length << "\n";
+      oss << "jp2k " << codestream_length << "\n";
     else
       oss << "-1\n";
       
@@ -1501,7 +1702,7 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
 #endif
   
   // Copy header
-  memcpy (&map[0], oss.str ().c_str (), static_cast<size_t> (data_idx));
+  memcpy (&map[0], oss.str ().c_str (), static_cast<std::size_t> (data_idx));
   // Copy the compressed data
   memcpy (&map[data_idx], temp_buf, data_size);
   if (is_image_compressed)
