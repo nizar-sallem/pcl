@@ -125,35 +125,47 @@ namespace leica
         map_synchronization_ = sync;
       }
 
-      std::string writeHeader (const sensor_msgs::PTXCloudData& cloud, 
-                               const Eigen::Vector4d& origin, 
-                               const Eigen::Quaterniond& orientation, 
-                               const Eigen::Affine3d& transformation, 
-                               int data_type, 
-                               bool& with_rgb);
+      std::string 
+      writeHeader (const sensor_msgs::PTXCloudData& cloud, 
+                   const Eigen::Vector4d& origin, 
+                   const Eigen::Quaterniond& orientation, 
+                   const Eigen::Affine3d& transformation, 
+                   int data_type, 
+                   bool& with_rgb);
     
 
-      int writeASCII (const std::string &file_name, 
-                      const sensor_msgs::PTXCloudData &cloud, 
-                      const Eigen::Vector4d &origin, 
-                      const Eigen::Quaterniond &orientation, 
-                      const Eigen::Affine3d& transformation,
-                      int precision);
+      int 
+      writeASCII (const std::string &file_name, 
+                  const sensor_msgs::PTXCloudData &cloud, 
+                  const Eigen::Vector4d &origin, 
+                  const Eigen::Quaterniond &orientation, 
+                  const Eigen::Affine3d& transformation,
+                  int precision = 6);
     
-      int writeBinary (const std::string &file_name, 
-                       const sensor_msgs::PTXCloudData &cloud, 
-                       const Eigen::Vector4d &origin, 
-                       const Eigen::Quaterniond &orientation, 
-                       const Eigen::Affine3d& transformation,
-                       const int precision);
+      int 
+      writeBinary (const std::string &file_name, 
+                   const sensor_msgs::PTXCloudData &cloud, 
+                   const Eigen::Vector4d &origin, 
+                   const Eigen::Quaterniond &orientation, 
+                   const Eigen::Affine3d& transformation,
+                   const int precision = 6);
     
   
-      int writeBinaryCompressed (const std::string &file_name, 
-                                 const sensor_msgs::PTXCloudData &cloud,
-                                 const Eigen::Vector4d &origin, 
-                                 const Eigen::Quaterniond &orientation,
-                                 const Eigen::Affine3d& transformation,
-                                 bool debug_image = false);
+      int 
+      writeBinaryCompressed (const std::string &file_name, 
+                             const sensor_msgs::PTXCloudData &cloud,
+                             const Eigen::Vector4d &origin, 
+                             const Eigen::Quaterniond &orientation,
+                             const Eigen::Affine3d& transformation,
+                             bool debug_image = false);
+
+      int
+      writeLZFCompressed (const std::string &file_name, 
+                          const sensor_msgs::PTXCloudData &cloud,
+                          const Eigen::Vector4d &origin, 
+                          const Eigen::Quaterniond &orientation,
+                          const Eigen::Affine3d& transformation);
+
     
     private:
 
