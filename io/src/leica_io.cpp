@@ -196,7 +196,6 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
       return (-2);
     }
   }
-  std::cout <<  "origin " << origin.transpose () << std::endl;
   // Sensor orientation
   for (int l = 0; l < 3; ++l)
   {
@@ -220,7 +219,7 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
       }
     }
   }
-  std::cout <<  "orientation " << orientation.matrix () << std::endl;
+
   // Transformation matrix
   for (int l = 0; l < 4; ++l)
   {
@@ -244,7 +243,7 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
       }
     }
   }  
-  std::cout <<  "transformation " << transformation.matrix () << std::endl;
+
   // Data type
   if (tokenizeNextLine (fs, line, st, 1))
   {
@@ -264,7 +263,7 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
     fs.close ();
     return (-2);
   }
-  std::cout << "data_type " << st[0] << " : " << data_type << std::endl;
+
   // X Y Z I
   cloud.fields.resize (4);
   cloud.fields[0].name = "x"; 
@@ -333,7 +332,7 @@ leica::PTXReader::readHeader (const std::string &file_name, sensor_msgs::PTXClou
       fs.close ();
       return (-2);
     }
-    std::cout << "image_encoding " << st[0] << " : " << image_type << std::endl;
+
     // add RGB
     if (image_type == 0 || image_type == 2)
     {
@@ -403,8 +402,6 @@ leica::PTXReader::read (const std::string &file_name, sensor_msgs::PTXCloudData 
 
     std::string line;
     std::vector<std::string> st;
-    std::cout << "cloud data size " <<  cloud.data.size () << std::endl;
-    std::cout << "cloud.fields.size () " << cloud.fields.size () << std::endl;
     std::size_t total = 0;
     // Copy line data
     try
@@ -1373,7 +1370,6 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
                                          const Eigen::Affine3d& transformation,
                                          bool debug_image)
 {
-  std::cout << "writeBinaryCompressed" << std::endl;
   if (cloud.data.empty ())
   {
     PCL_ERROR ("[leica::PTXWriter::writeBinaryCompressed] Input point cloud has no data!\n");
@@ -1532,11 +1528,8 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   opj_cinfo_t* cinfo = NULL;
   opj_codestream_info_t compression_info;
   
-  std::cout << "numcomps " << numcomps << std::endl;
-  std::cout << "with_rgb " << with_rgb << std::endl;
   if (with_rgb)
   {
-    std::cout << "rgb_index " << rgb_index << std::endl;
     /* initialize image components */
     memset(&cmptparm[0], 0, 3 * sizeof(opj_image_cmptparm_t));
     for (int i = 0; i < numcomps; i++) 
@@ -1564,6 +1557,9 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     image->y1 = parameters.image_offset_y0 + (h - 1) * parameters.subsampling_dy + 1;
 
     size_t rgb_offset = cloud.fields[rgb_index].offset;
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
     for (size_t i = 0; i < cloud.width * cloud.height; ++i)
     {
       for (size_t j = 0; j < pters.size (); ++j)
