@@ -114,18 +114,12 @@ main (int argc, char** argv)
 
   // Parse the command line arguments for .pcd and .ptx files
   std::vector<int> ptx_file_indices = parse_file_extension_argument (argc, argv, ".ptx");
-  std::cout << "ptx_file_indices.size () " << ptx_file_indices.size () << std::endl;
-  for (std::size_t i = 0; i < ptx_file_indices.size (); ++i)
-    std::cout << ptx_file_indices[i] << " ";
-  std::cout << std::endl;
   
   if (ptx_file_indices.size () != 2)
   {
     print_error ("Need one input PTX file and one output PTX file.\n");
     return (-1);
   }
-  std::cout << "PTX ascii file " << argv[ptx_file_indices[0]] << std::endl;
-  std::cout << "PTX binary file " << argv[ptx_file_indices[1]] << std::endl;
   
   // Command line parsing
   int format = 0;
