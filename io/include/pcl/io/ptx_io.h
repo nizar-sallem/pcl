@@ -113,13 +113,13 @@ namespace pcl
         *  * == 0 on success
         */
       int 
-      readHeader (const std::string &file_name, sensor_msgs::PointCloud2 &cloud, 
+      readHeader (const std::string &file_name, pcl::PCLPointCloud2 &cloud, 
                   Eigen::Vector4d &origin, Eigen::Quaterniond &orientation, 
                   Eigen::Affine3d &transformation, int &ptx_version,
                   int &data_type, unsigned int &data_idx, const int offset = 0);
 
       int 
-      readHeader (const std::string &file_name, sensor_msgs::PointCloud2 &cloud, 
+      readHeader (const std::string &file_name, pcl::PCLPointCloud2 &cloud, 
                   Eigen::Vector4f &origin, Eigen::Quaternionf &orientation, 
                   int &ptx_version, int &data_type, unsigned int &data_idx, const int offset = 0)
       {
@@ -157,7 +157,7 @@ namespace pcl
         *  * == 0 on success
         */
       int 
-      readHeader (const std::string &file_name, sensor_msgs::PointCloud2 &cloud, const int offset = 0);
+      readHeader (const std::string &file_name, pcl::PCLPointCloud2 &cloud, const int offset = 0);
 
       /** \brief Read a point cloud data from a PTX file and store it into a sensor_msgs/PointCloud2.
         * \param[in] file_name the name of the file containing the actual PointCloud data
@@ -177,12 +177,12 @@ namespace pcl
         *  * == 0 on success
         */
       int 
-      read (const std::string &file_name, sensor_msgs::PointCloud2 &cloud, 
+      read (const std::string &file_name, pcl::PCLPointCloud2 &cloud, 
             Eigen::Vector4d &origin, Eigen::Quaterniond &orientation, Eigen::Affine3d& transform,
             int &ptx_version, const int offset = 0);
 
       int 
-      read (const std::string &file_name, sensor_msgs::PointCloud2 &cloud, 
+      read (const std::string &file_name, pcl::PCLPointCloud2 &cloud, 
             Eigen::Vector4f &origin, Eigen::Quaternionf &orientation, 
             int &ptx_version, const int offset)
       {
@@ -212,7 +212,7 @@ namespace pcl
       template<typename PointT> int
       read (const std::string &file_name, pcl::PointCloud<PointT> &cloud, const int offset = 0)
       {
-        sensor_msgs::PointCloud2 blob;
+        pcl::PCLPointCloud2 blob;
         Eigen::Affine3d transformation;
         int ptx_version;
         int res = read (file_name, blob, cloud.sensor_origin_, cloud.sensor_orientation_, transformation,
@@ -221,7 +221,7 @@ namespace pcl
         // If no error, convert the data and transform
         if (res == 0)
         {
-          pcl::fromROSMsg (blob, cloud);
+          pcl::fromPCLPointCloud2 (blob, cloud);
           transformPointCloud<PointT, double> (cloud, cloud, transformation);
         } 
         return (res);
@@ -264,7 +264,7 @@ namespace pcl
         * \param[in] orientation the sensor acquisition orientation
         */
       std::string
-      generateHeaderBinary (const sensor_msgs::PointCloud2 &cloud, 
+      generateHeaderBinary (const pcl::PCLPointCloud2 &cloud, 
                             const Eigen::Vector4d &origin, 
                             const Eigen::Quaterniond &orientation,
                             const Eigen::Affine3d &transformation);
@@ -275,7 +275,7 @@ namespace pcl
         * \param[in] orientation the sensor acquisition orientation
         */
       std::string
-      generateHeaderBinaryCompressed (const sensor_msgs::PointCloud2 &cloud, 
+      generateHeaderBinaryCompressed (const pcl::PCLPointCloud2 &cloud, 
                                       const Eigen::Vector4d &origin, 
                                       const Eigen::Quaterniond &orientation,
                                       const Eigen::Affine3d &transformation);
@@ -286,7 +286,7 @@ namespace pcl
         * \param[in] orientation the sensor acquisition orientation
         */
       std::string
-      generateHeaderASCII (const sensor_msgs::PointCloud2 &cloud, 
+      generateHeaderASCII (const pcl::PCLPointCloud2 &cloud, 
                            const Eigen::Vector4d &origin, 
                            const Eigen::Quaterniond &orientation,
                            const Eigen::Affine3d &transformation);
@@ -318,7 +318,7 @@ namespace pcl
         * As an intermediary solution, precision 8 is used, which guarantees lossless storage for RGB.
         */
       int 
-      writeASCII (const std::string &file_name, const sensor_msgs::PointCloud2 &cloud, 
+      writeASCII (const std::string &file_name, const pcl::PCLPointCloud2 &cloud, 
                   const Eigen::Vector4d &origin = Eigen::Vector4d::Zero (), 
                   const Eigen::Quaterniond &orientation = Eigen::Quaternionf::Identity (),
                   const Eigen::Affine3d &transformation = Eigen::Affine3d::Identity (),
@@ -331,7 +331,7 @@ namespace pcl
         * \param[in] orientation the sensor acquisition orientation
         */
       int 
-      writeBinary (const std::string &file_name, const sensor_msgs::PointCloud2 &cloud,
+      writeBinary (const std::string &file_name, const pcl::PCLPointCloud2 &cloud,
                    const Eigen::Vector4d &origin = Eigen::Vector4d::Zero (), 
                    const Eigen::Quaterniond &orientation = Eigen::Quaterniond::Identity (),
                    const Eigen::Affine3d &transformation = Eigen::Affine3d::Identity ());
@@ -343,7 +343,7 @@ namespace pcl
         * \param[in] orientation the sensor acquisition orientation
         */
       int 
-      writeBinaryCompressed (const std::string &file_name, const sensor_msgs::PointCloud2 &cloud,
+      writeBinaryCompressed (const std::string &file_name, const pcl::PCLPointCloud2 &cloud,
                              const Eigen::Vector4d &origin = Eigen::Vector4d::Zero (), 
                              const Eigen::Quaterniond &orientation = Eigen::Quaterniond::Identity (),
                              const Eigen::Affine3d &transformation = Eigen::Affine3d::Identity ());
@@ -366,7 +366,7 @@ namespace pcl
         * As an intermediary solution, precision 8 is used, which guarantees lossless storage for RGB.
         */
       inline int
-      write (const std::string &file_name, const sensor_msgs::PointCloud2 &cloud, 
+      write (const std::string &file_name, const pcl::PCLPointCloud2 &cloud, 
              const Eigen::Vector4d &origin = Eigen::Vector4d::Zero (), 
              const Eigen::Quaterniond &orientation = Eigen::Quaterniond::Identity (),
              const Eigen::Affine3d &transformation = Eigen::Affine3d::Identity (),
@@ -379,7 +379,7 @@ namespace pcl
       }
 
       inline int
-      write (const std::string &file_name, const sensor_msgs::PointCloud2 &cloud, 
+      write (const std::string &file_name, const pcl::PCLPointCloud2 &cloud, 
              const Eigen::Vector4f &origin = Eigen::Vector4f::Zero (), 
              const Eigen::Quaternionf &orientation = Eigen::Quaternionf::Identity (),
              const bool binary = false)
@@ -408,7 +408,7 @@ namespace pcl
         * future versions of PCL.
         */
       inline int
-      write (const std::string &file_name, const sensor_msgs::PointCloud2::ConstPtr &cloud, 
+      write (const std::string &file_name, const pcl::PCLPointCloud2::ConstPtr &cloud, 
              const Eigen::Vector4d &origin = Eigen::Vector4d::Zero (), 
              const Eigen::Quaterniond &orientation = Eigen::Quaterniond::Identity (),
              const Eigen::Affine3d &transformation = Eigen::Affine3d::Identity (),
@@ -418,7 +418,7 @@ namespace pcl
       }
 
       inline int
-      write (const std::string &file_name, const sensor_msgs::PointCloud2::ConstPtr &cloud, 
+      write (const std::string &file_name, const pcl::PCLPointCloud2::ConstPtr &cloud, 
              const Eigen::Vector4f &origin = Eigen::Vector4f::Zero (), 
              const Eigen::Quaternionf &orientation = Eigen::Quaternionf::Identity (),
              const bool binary = false)
@@ -564,7 +564,7 @@ namespace pcl
       * \ingroup io
       */
     inline int 
-    loadPTXFile (const std::string &file_name, sensor_msgs::PointCloud2 &cloud,
+    loadPTXFile (const std::string &file_name, pcl::PCLPointCloud2 &cloud,
                  Eigen::Vector4d &origin, Eigen::Quaterniond &orientation, Eigen::Affine3d transformation)
     {
       pcl::PTXReader p;
@@ -600,7 +600,7 @@ namespace pcl
       * \ingroup io
       */
     inline int 
-    savePTXFile (const std::string &file_name, const sensor_msgs::PointCloud2 &cloud, 
+    savePTXFile (const std::string &file_name, const pcl::PCLPointCloud2 &cloud, 
                  const Eigen::Vector4f &origin = Eigen::Vector4f::Zero (), 
                  const Eigen::Quaternionf &orientation = Eigen::Quaternionf::Identity (),
                  const bool binary_mode = false)

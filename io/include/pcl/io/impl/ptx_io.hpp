@@ -132,7 +132,7 @@ pcl::PTXWriter::writeBinary (const std::string &file_name,
   boost::interprocess::file_lock file_lock;
   setLockingPermissions (file_name, file_lock);
 
-  std::vector<sensor_msgs::PointField> fields;
+  std::vector<pcl::PCLPointField> fields;
   std::vector<int> fields_sizes;
   size_t fsize = 0;
   size_t data_size = 0;
@@ -268,7 +268,7 @@ pcl::PTXWriter::writeASCII (const std::string &file_name, const pcl::PointCloud<
   fs.precision (precision);
   fs.imbue (std::locale::classic ());
 
-  std::vector<sensor_msgs::PointField> fields;
+  std::vector<pcl::PCLPointField> fields;
   pcl::getFields (cloud, fields);
 
   // Write the header information
@@ -294,7 +294,7 @@ pcl::PTXWriter::writeASCII (const std::string &file_name, const pcl::PointCloud<
       {
         switch (fields[d].datatype)
         {
-          case sensor_msgs::PointField::INT8:
+          case pcl::PCLPointField::INT8:
           {
             int8_t value;
             memcpy (&value, reinterpret_cast<const char*> (&cloud.points[i]) + fields[d].offset + c * sizeof (int8_t), sizeof (int8_t));
@@ -304,7 +304,7 @@ pcl::PTXWriter::writeASCII (const std::string &file_name, const pcl::PointCloud<
               stream << boost::numeric_cast<uint32_t>(value);
             break;
           }
-          case sensor_msgs::PointField::UINT8:
+          case pcl::PCLPointField::UINT8:
           {
             uint8_t value;
             memcpy (&value, reinterpret_cast<const char*> (&cloud.points[i]) + fields[d].offset + c * sizeof (uint8_t), sizeof (uint8_t));
@@ -314,7 +314,7 @@ pcl::PTXWriter::writeASCII (const std::string &file_name, const pcl::PointCloud<
               stream << boost::numeric_cast<uint32_t>(value);
             break;
           }
-          case sensor_msgs::PointField::INT32:
+          case pcl::PCLPointField::INT32:
           {
             int32_t value;
             memcpy (&value, reinterpret_cast<const char*> (&cloud.points[i]) + fields[d].offset + c * sizeof (int32_t), sizeof (int32_t));
@@ -324,7 +324,7 @@ pcl::PTXWriter::writeASCII (const std::string &file_name, const pcl::PointCloud<
               stream << boost::numeric_cast<int32_t>(value);
             break;
           }
-          case sensor_msgs::PointField::UINT32:
+          case pcl::PCLPointField::UINT32:
           {
             uint32_t value;
             memcpy (&value, reinterpret_cast<const char*> (&cloud.points[i]) + fields[d].offset + c * sizeof (uint32_t), sizeof (uint32_t));
@@ -334,7 +334,7 @@ pcl::PTXWriter::writeASCII (const std::string &file_name, const pcl::PointCloud<
               stream << boost::numeric_cast<uint32_t>(value);
             break;
           }
-          case sensor_msgs::PointField::FLOAT32:
+          case pcl::PCLPointField::FLOAT32:
           {
             float value;
             memcpy (&value, reinterpret_cast<const char*> (&cloud.points[i]) + fields[d].offset + c * sizeof (float), sizeof (float));
@@ -344,7 +344,7 @@ pcl::PTXWriter::writeASCII (const std::string &file_name, const pcl::PointCloud<
               stream << boost::numeric_cast<float>(value);
             break;
           }
-          case sensor_msgs::PointField::FLOAT64:
+          case pcl::PCLPointField::FLOAT64:
           {
             double value;
             memcpy (&value, reinterpret_cast<const char*> (&cloud.points[i]) + fields[d].offset + c * sizeof (double), sizeof (double));
@@ -412,7 +412,7 @@ pcl::PTXWriter::writeBinary (const std::string &file_name,
   boost::interprocess::file_lock file_lock;
   setLockingPermissions (file_name, file_lock);
 
-  std::vector<sensor_msgs::PointField> fields;
+  std::vector<pcl::PCLPointField> fields;
   std::vector<int> fields_sizes;
   size_t fsize = 0;
   size_t data_size = 0;

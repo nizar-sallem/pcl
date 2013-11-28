@@ -38,24 +38,24 @@
 #ifndef PCL_SENSOR_MSGS_MESSAGE_PTX_CLOUD_DATA_H
 #define PCL_SENSOR_MSGS_MESSAGE_PTX_CLOUD_DATA_H
 
-#include <sensor_msgs/PointCloud2.h>
+#include <pcl/PCLPointCloud2.h>
 
-namespace sensor_msgs
+namespace pcl
 {
-  struct PTXCloudData : public PointCloud2
+  struct PTXCloudData : public PCLPointCloud2
   {
     PTXCloudData ()
-      : PointCloud2 (), image_offset (-1), image_encoding (), image_step (0) { }
+      : PCLPointCloud2 (), image_offset (-1), image_encoding (), image_step (0) { }
 
     std::size_t   image_offset;
     std::string   image_encoding;
     pcl::uint32_t image_step;
 
-    typedef boost::shared_ptr< ::sensor_msgs::PTXCloudData> Ptr;
-    typedef boost::shared_ptr< ::sensor_msgs::PTXCloudData  const> ConstPtr;
+    typedef boost::shared_ptr<PTXCloudData> Ptr;
+    typedef boost::shared_ptr<PTXCloudData  const> ConstPtr;
   };
 
-  inline std::ostream& operator<<(std::ostream& s, const  ::sensor_msgs::PTXCloudData &v)
+  inline std::ostream& operator<<(std::ostream& s, const  ::pcl::PTXCloudData &v)
   {
     s << "header: " << std::endl;
     s << v.header;

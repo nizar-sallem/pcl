@@ -73,17 +73,17 @@ namespace leica
         */
 
       int 
-      readHeader (const std::string &file_name, sensor_msgs::PTXCloudData &cloud, 
+      readHeader (const std::string &file_name, pcl::PTXCloudData &cloud, 
                   Eigen::Vector4f &origin, Eigen::Quaternionf &orientation, Eigen::Affine3f& transformation,
                   int &data_type, std::size_t &data_idx,
                   std::size_t &image_idx, int& image_type, std::size_t& image_size);
       int
-      read (const std::string &file_name, sensor_msgs::PTXCloudData &cloud,
+      read (const std::string &file_name, pcl::PTXCloudData &cloud,
             Eigen::Vector4f &origin, Eigen::Quaternionf &orientation, Eigen::Affine3f& transformation,
             int &ptx_version, const int offset = 0);
 
       int
-      readBinary (const std::string& file_name, sensor_msgs::PTXCloudData& cloud, 
+      readBinary (const std::string& file_name, pcl::PTXCloudData& cloud, 
                   int data_type, std::size_t data_offset, 
                   int image_type, std::size_t image_size,
                   unsigned int nr_points);
@@ -126,7 +126,7 @@ namespace leica
       }
 
       std::string 
-      writeHeader (const sensor_msgs::PTXCloudData& cloud, 
+      writeHeader (const pcl::PTXCloudData& cloud, 
                    const Eigen::Vector4d& origin, 
                    const Eigen::Quaterniond& orientation, 
                    const Eigen::Affine3d& transformation, 
@@ -136,7 +136,7 @@ namespace leica
 
       int 
       writeASCII (const std::string &file_name, 
-                  const sensor_msgs::PTXCloudData &cloud, 
+                  const pcl::PTXCloudData &cloud, 
                   const Eigen::Vector4d &origin, 
                   const Eigen::Quaterniond &orientation, 
                   const Eigen::Affine3d& transformation,
@@ -144,7 +144,7 @@ namespace leica
     
       int 
       writeBinary (const std::string &file_name, 
-                   const sensor_msgs::PTXCloudData &cloud, 
+                   const pcl::PTXCloudData &cloud, 
                    const Eigen::Vector4d &origin, 
                    const Eigen::Quaterniond &orientation, 
                    const Eigen::Affine3d& transformation,
@@ -153,7 +153,7 @@ namespace leica
   
       int 
       writeBinaryCompressed (const std::string &file_name, 
-                             const sensor_msgs::PTXCloudData &cloud,
+                             const pcl::PTXCloudData &cloud,
                              const Eigen::Vector4d &origin, 
                              const Eigen::Quaterniond &orientation,
                              const Eigen::Affine3d& transformation,
@@ -161,7 +161,7 @@ namespace leica
 
       int
       writeLZFCompressed (const std::string &file_name, 
-                          const sensor_msgs::PTXCloudData &cloud,
+                          const pcl::PTXCloudData &cloud,
                           const Eigen::Vector4d &origin, 
                           const Eigen::Quaterniond &orientation,
                           const Eigen::Affine3d& transformation);
