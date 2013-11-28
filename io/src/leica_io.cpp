@@ -1024,11 +1024,6 @@ leica::PTXWriter::writeASCII (const std::string &file_name,
             pcl::copyValueString<pcl::traits::asType<pcl::PCLPointField::FLOAT64>::type>(cloud, i, point_size, d, c, stream);
             break;
           }
-          case pcl::PCLPointField::FLOAT16:
-          {
-            pcl::copyValueString<pcl::traits::asType<pcl::PCLPointField::FLOAT16>::type>(cloud, i, point_size, d, c, stream);
-            break;
-          }
           default:
             PCL_WARN ("[leica::PTXWriter::writeASCII] Incorrect field data type specified (%d)!\n", cloud.fields[d].datatype);
             break;

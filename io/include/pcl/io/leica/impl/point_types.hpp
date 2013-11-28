@@ -35,8 +35,8 @@
  *
  */
 
-#ifndef LEICA_PTX_CLOUD_H
-#define LEICA_PTX_CLOUD_H
+#ifndef LEICA_POINT_TYPES_HPP
+#define LEICA_POINT_TYPES_HPP
 
 #if defined __GNUC__
 #  pragma GCC system_header
@@ -56,8 +56,7 @@ namespace leica
       float z;            \
       float i;            \
     };                    \
-  };                      \
-  
+  };                                                                    \
   inline Eigen::Map<Eigen::Vector3f> getVector3fMap () { return (Eigen::Vector3f::Map (data)); } \
   inline const Eigen::Map<const Eigen::Vector3f> getVector3fMap () const { return (Eigen::Vector3f::Map (data)); } \
   inline Eigen::Map<Eigen::Vector4f, Eigen::Aligned> getVector4fMap () { return (Eigen::Vector4f::MapAligned (data)); } \
@@ -75,9 +74,8 @@ namespace leica
       uint8_t b;                                \
       uint8_t g;                                \
       uint8_t r;                                \
-      uint8_t a;                                \
     };                                          \
-    uint32_t rgba;                              \
+    uint8_t rgb[3];                             \
   };
   
   struct _PointXYZI
@@ -105,37 +103,120 @@ namespace leica
 
     friend std::ostream& operator << (std::ostream& os, const PointXYZI& p);
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  }
+  };
   
-  struct EIGEN_ALIGN16 _PointXYZIRGBA
+  struct EIGEN_ALIGN16 _PointXYZIRGB
   {
     LEICA_ADD_POINT4D; 
     LEICA_ADD_RGB;
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   };
 
-  PCL_EXPORTS std::ostream& operator << (std::ostream& os, const PointXYZIRGBA& p);
+  PCL_EXPORTS std::ostream& operator << (std::ostream& os, const PointXYZIRGB& p);
 
-  struct EIGEN_ALIGN16 PointXYZIRGBA : public _PointXYZIRGBA
+  struct EIGEN_ALIGN16 PointXYZIRGB : public _PointXYZIRGB
   {
-    inline PointXYZIRGBA (const _PointXYZIRGBA &p)
+    inline PointXYZIRGB (const _PointXYZIRGB &p)
     {
       x = p.x; y = p.y; z = p.z; i = p.i;
-      rgba = p.rgba;
+      r = p.r; g = p.g; b = p.b;
     }
 
-    inline PointXYZIRGBA ()
+    inline PointXYZIRGB ()
     {
       x = y = z = i = 0.f;
-      r = g = b = a = 0;
+      r = g = b = 0;
     }
 
     inline Eigen::Vector3i getRGBVector3i () { return (Eigen::Vector3i (r, g, b)); }
     inline const Eigen::Vector3i getRGBVector3i () const { return (Eigen::Vector3i (r, g, b)); }
-    inline Eigen::Vector4i getRGBVector4i () { return (Eigen::Vector4i (r, g, b, a)); }
-    inline const Eigen::Vector4i getRGBVector4i () const { return (Eigen::Vector4i (r, g, b, a)); }
-    friend std::ostream& operator << (std::ostream& os, const PointXYZIRGBA& p);
+    friend std::ostream& operator << (std::ostream& os, const PointXYZIRGB& p);
   };
-}
+
+  struct _RGB
+  {
+    LEICA_ADD_RGB;
+  };
+
+  PCL_EXPORTS std::ostream& operator << (std::ostream& os, const RGB& p);
+
+  struct RGB: public _RGB
+  {
+    inline RGB (const _RGB &p)
+    {
+      r = p.r;
+      g = p.g;
+      b = p.b;
+    }
+
+    inline RGB ()
+    {
+      r = g = b = 0;
+    }
+  
+    friend std::ostream& operator << (std::ostream& os, const RGB& p);
+  };
+
+  // class float24
+  // {
+  //   float24 (const float24 &f) { memcpy (data, &f.data, 3*sizeof(char)); }
+  //   float24 (float f)
+  //   {
+  //     int cnt = 0;
+  //     while (f != floor (f)) 
+  //     {
+  //       f *= 10.0; 
+  //       cnt++;
+  //     }
+      
+  //     int val = (cnt << 16) | ((int) (value));
+  //     memcpy (data, val, 3*sizeof(char));
+  //   }
+    
+  //   operator float()
+  //   {
+  //     int cnt = data >> 16;
+  //     float result = data & 0xffff;
+      
+  //     while (cnt > 0) 
+  //     {
+  //       result /= 10.0; 
+  //       cnt--;
+  //     }
+      
+  //     return result;
+  //   }
+    
+  //   private:
+  //   char data[3];
+  // };
+} // namespace leica
+
+
+POINT_CLOUD_REGISTER_POINT_STRUCT (leica::_PointXYZI,
+                                   (float, x, x)
+                                   (float, y, y)
+                                   (float, z, z)
+                                   (float, i, i))
+
+POINT_CLOUD_REGISTER_POINT_WRAPPER(leica::PointXYZI, leica::_PointXYZI)
+
+POINT_CLOUD_REGISTER_POINT_STRUCT (leica::_PointXYZIRGB,
+                                   (float, x, x)
+                                   (float, y, y)
+                                   (float, z, z)
+                                   (float, i, i)
+                                   (uint8_t, r, r)
+                                   (uint8_t, g, g)
+                                   (uint8_t, b, b))
+
+POINT_CLOUD_REGISTER_POINT_WRAPPER(leica::PointXYZIRGB, leica::_PointXYZIRGB)
+
+POINT_CLOUD_REGISTER_POINT_STRUCT (leica::_RGB,
+                                   (uint8_t, r, r)
+                                   (uint8_t, g, g)
+                                   (uint8_t, b, b))
+
+POINT_CLOUD_REGISTER_POINT_WRAPPER(leica::RGB, leica::_RGB)
 
 #endif

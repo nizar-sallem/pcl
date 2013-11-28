@@ -47,25 +47,10 @@ namespace leica
   struct PointXYZI;
   
   struct PointXYZIRGB;
+
+  struct RGB;
 }
 
-#include <leica/impl/point_types.hpp>
-
-POINT_CLOUD_REGISTER_POINT_STRUCT (leica::_PointXYZI,
-                                   (float, x, x)
-                                   (float, y, y)
-                                   (float, z, z)
-                                   (float, intensity, intensity))
-
-POINT_CLOUD_REGISTER_POINT_WRAPPER(leica::PointXYZI, leica::_PointXYZI)
-
-POINT_CLOUD_REGISTER_POINT_STRUCT (leica::_PointXYZIRGBA,
-                                   (float, x, x)
-                                   (float, y, y)
-                                   (float, z, z)
-                                   (float, intensity, intensity)
-                                   (uint32_t, rgba, rgba))
-
-POINT_CLOUD_REGISTER_POINT_WRAPPER(leica::PointXYZIRGBA, leica::_PointXYZIRGBA)
+#include <pcl/io/leica/impl/point_types.hpp>
 
 #endif
