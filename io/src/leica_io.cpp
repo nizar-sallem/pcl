@@ -47,7 +47,6 @@
 #include <iostream>
 #include <iomanip>
 #include <pcl/io/leica/point_types.h>
-
 #include <boost/version.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/iostreams/device/mapped_file.hpp>
@@ -302,7 +301,7 @@ leica::PTXReader::readHeader (const std::string &file_name, pcl::PTXCloudData &c
     fs.close ();
     return (-2);
   }
-  if (cloud.image_offset != -1)
+  if (cloud.image_offset != std::size_t (-1))
   {
     // Image encoding
     if (tokenizeNextLine (fs, line, st, 1))
@@ -340,10 +339,10 @@ leica::PTXReader::readHeader (const std::string &file_name, pcl::PTXCloudData &c
       cloud.image_encoding = st[0];
       cloud.fields.resize (5);
       cloud.fields[4].name = "rgb";
-      cloud.fields[4].datatype = pcl::PCLPointField::FLOAT32;
+      cloud.fields[4].datatype = pcl::PCLPointField::RGB;
       cloud.fields[4].count = 1;
       cloud.fields[4].offset = cloud.point_step;
-      cloud.point_step+= static_cast<pcl::uint32_t> (sizeof (float));
+      cloud.point_step+= static_cast<pcl::uint32_t> (sizeof (leica::RGB));
     }
   }
 
@@ -596,10 +595,13 @@ leica::PTXReader::readBinary (const std::string& file_name, pcl::PTXCloudData& c
     {
       PCL_WARN ("[leica::PTXReader::read] The estimated cloud.data size (%u) is different than the saved uncompressed value (%u)! Data corruption?\n",
                 cloud.data.size (), uncompressed_size);
-      if (image_size == 0)
-        cloud.data.resize (uncompressed_size);
-      else
-        cloud.data.resize (uncompressed_size + cloud.width * cloud.height * sizeof (uint32_t));
+      if (uncompressed_size > cloud.data.size ())
+      {
+        if (image_size == 0)
+          cloud.data.resize (uncompressed_size);
+        else
+          cloud.data.resize (uncompressed_size + cloud.width * cloud.height * sizeof (leica::RGB));
+      }
     }
 
     char *buf = new char [data_size];
@@ -613,59 +615,118 @@ leica::PTXReader::readBinary (const std::string& file_name, pcl::PTXCloudData& c
       return (-1);
     }
 
+    std::size_t nb_origins;
+    memcpy (&nb_origins, buf, sizeof (std::size_t));
+    std::vector<std::size_t> origins (nb_origins);
+    memcpy (&origins[0], buf + sizeof (std::size_t), nb_origins * sizeof (std::size_t));
+    // std::ofstream origins_file;
+    // origins_file.open ("origins_read.txt");
+    // for (std::size_t i = 0; i < origins.size (); ++i)
+    //   origins_file << origins[i] << std::endl;
+    // origins_file.close ();
+    
+    char* points_buf = buf + ((nb_origins + 1) * sizeof (std::size_t));
+    
     // Get the fields sizes
     std::vector<pcl::PCLPointField> fields (cloud.fields.size ());
     std::vector<int> fields_sizes (cloud.fields.size ());
     int nri = 0, fsize = 0, rgb_idx = -1;
-    if (image_type == 0)
-    {
-      for (size_t i = 0; i < cloud.fields.size (); ++i)
-      {
-        fields_sizes[nri] = cloud.fields[i].count * pcl::getFieldSize (cloud.fields[i].datatype);
-        fsize += fields_sizes[nri];
-        fields[nri] = cloud.fields[i];
-        ++nri;
-      }
-    }
-    else
+
+    fields.resize (4);
+    fields[0].name = "radius";
+    fields[0].offset = 0;
+    fields[0].datatype = pcl::traits::asEnum<float>::value;
+    fields[0].count = 1;
+    fields_sizes[0] = sizeof (float);
+    fsize += fields_sizes[0];
+    
+    fields[1].name = "indexed_theta";
+    fields[1].offset = fsize;
+    fields[1].datatype = pcl::traits::asEnum<uint16_t>::value;
+    fields[1].count = 1;
+    fields_sizes[1] = sizeof (uint16_t);
+    fsize += fields_sizes[1];
+    
+    fields[2].name = "indexed_phi";
+    fields[2].offset = fsize;
+    fields[2].datatype = pcl::traits::asEnum<int16_t>::value;
+    fields[2].count = 1;
+    fields_sizes[2] = sizeof (int16_t);
+    fsize += fields_sizes[2];
+    
+    fields[3].name = "intensity";
+    fields[3].offset = fsize;
+    fields[3].datatype = pcl::traits::asEnum<half_float::half>::value;
+    fields[3].count = 1;
+    fields_sizes[3] = sizeof (half_float::half);
+    fsize += fields_sizes[3];
+
+    if (image_type != 0)
     {
       for (size_t i = 0; i < cloud.fields.size (); ++i)
       {
         if ((cloud.fields[i].name == "rgb") || (cloud.fields[i].name == "rgba"))
         {
           rgb_idx = i;
-          continue;
+          break;
         }
-
-        fields_sizes[nri] = cloud.fields[i].count * pcl::getFieldSize (cloud.fields[i].datatype);
-        fsize += fields_sizes[nri];
-        fields[nri] = cloud.fields[i];
-        ++nri;
       }
     }
 
-    fields.resize (nri);
-    fields_sizes.resize (nri);
+    // create a buffer for origin point
+    float origin_xyzi[4] = {0, 0, 0, 0.5};
 
-    // Unpack the xxyyzz to xyz
+    // Unpack the xxyyzz to xyz      
     std::vector<char*> pters (fields.size ());
-    int toff = 0;
+    int toff = (nb_origins + 1) * sizeof (std::size_t);
+    int nb_valid_points = (cloud.width * cloud.height) - nb_origins;
     for (size_t i = 0; i < pters.size (); ++i)
     {
       pters[i] = &buf[toff];
-      toff += fields_sizes[i] * cloud.width * cloud.height;
+      toff += fields_sizes[i] * nb_valid_points;
     }
+
+    std::ofstream indexed_spherical_file;
+    indexed_spherical_file.open ("indexed_spherical_read.txt");
+
     // Copy it to the cloud
+    std::vector<std::size_t>::const_iterator origin_index = origins.begin ();
     for (size_t i = 0; i < cloud.width * cloud.height; ++i)
     {
-      for (size_t j = 0; j < pters.size (); ++j)
+      if ((i != *origin_index) || (origin_index == origins.end ()))
       {
-        memcpy (&cloud.data[i * fsize + fields[j].offset], pters[j], fields_sizes[j]);
-        // Increment the pointer
-        pters[j] += fields_sizes[j];
+        float radius;
+        half_float::half intensity;
+        uint16_t indexed_theta;
+        int16_t indexed_phi;
+        memcpy (&radius, pters[0], fields_sizes[0]);
+        memcpy (&indexed_theta, pters[1], fields_sizes[1]);
+        memcpy (&indexed_phi, pters[2], fields_sizes[2]);
+        memcpy (&intensity, pters[3], fields_sizes[3]);
+        pters[0] += fields_sizes[0];
+        pters[1] += fields_sizes[1];
+        pters[2] += fields_sizes[2];
+        pters[3] += fields_sizes[3];
+
+        float xyzi[4];
+        float theta = indexed_theta / 10000.0;
+        float r_sin_theta = radius; r_sin_theta *= sin (theta);
+        float r_cos_theta = radius; r_cos_theta *= cos (theta);
+        float phi = indexed_phi / 10000.0;
+        xyzi[0] = r_sin_theta * cos (phi);
+        xyzi[1] = r_sin_theta * sin (phi);
+        xyzi[2] = r_cos_theta;
+        xyzi[3] = static_cast<float> (intensity);
+        memcpy (&cloud.data[i * cloud.point_step], xyzi, 4*sizeof (float));
+      }
+      else
+      {
+        memcpy (&cloud.data[i * cloud.point_step], origin_xyzi, 4*sizeof (float));
+        ++origin_index;
       }
     }
     delete[] buf;
+    indexed_spherical_file.close ();
 
     // If JPEG 2000 compression is used
     if (image_type == 2)
@@ -858,30 +919,30 @@ leica::PTXWriter::writeHeader (const pcl::PTXCloudData &cloud,
                                bool& with_rgb)
 {
   with_rgb = false;
+  
+  // if (cloud.fields[0].name != "x" && cloud.fields[0].name != "r")
+  // {
+  //   PCL_ERROR ("[leica::PTXWriter::writeHeader] No \'x\' or \'r\' field!\n");
+  //   return ("");
+  // }
 
-  if (cloud.fields[0].name != "x")
-  {
-    PCL_ERROR ("[leica::PTXWriter::writeHeader] No \'x\' field!\n");
-    return ("");
-  }
+  // if (cloud.fields[1].name != "y" && cloud.fields[1].name != "theta")
+  // {
+  //   PCL_ERROR ("[leica::PTXWriter::writeHeader] No \'y\' or \'theta\' field!\n");
+  //   return ("");
+  // }
 
-  if (cloud.fields[1].name != "y")
-  {
-    PCL_ERROR ("[leica::PTXWriter::writeHeader] No \'y\' field!\n");
-    return ("");
-  }
+  // if (cloud.fields[2].name != "z" && cloud.fields[2].name != "phi")
+  // {
+  //   PCL_ERROR ("[leica::PTXWriter::writeHeader] No \'z\' or \'phi\' field!\n");
+  //   return ("");
+  // }
 
-  if (cloud.fields[2].name != "z")
-  {
-    PCL_ERROR ("[leica::PTXWriter::writeHeader] No \'z\' field!\n");
-    return ("");
-  }
-
-  if (cloud.fields[3].name != "i")
-  {
-    PCL_ERROR ("[leica::PTXWriter::writeHeader] No \'i\' field!\n");
-    return ("");
-  }
+  // if (cloud.fields[3].name != "i")
+  // {
+  //   PCL_ERROR ("[leica::PTXWriter::writeHeader] No \'i\' field!\n");
+  //   return ("");
+  // }
 
   if ((cloud.fields.size () > 4) && (cloud.fields[4].name == "rgb" || cloud.fields[4].name == "rgba"))
     with_rgb = true;
@@ -978,7 +1039,7 @@ leica::PTXWriter::writeASCII (const std::string &file_name,
 
       int count = cloud.fields[d].count;
       if (count == 0)
-        count = 1;          // we simply cannot tolerate 0 counts (coming from older converter code)
+        count = 1;
 
       for (int c = 0; c < count; ++c)
       {
@@ -1392,8 +1453,6 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   oss.imbue (std::locale::classic ());
 
   oss << writeHeader (cloud, origin, orientation, transformation, 2, with_rgb);
-  if (!with_rgb)
-    oss << "0\n";
 
 #ifdef _WIN32
   HANDLE h_native_file = CreateFile (file_name.c_str (), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -1417,47 +1476,90 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   size_t fsize = 0;
   size_t data_size = 0;
   size_t nri = 0;
-  std::vector<pcl::PCLPointField> fields (cloud.fields.size ());
-  std::vector<int> fields_sizes (cloud.fields.size ());
+  std::vector<pcl::PCLPointField> fields (4);
+  std::vector<int> fields_sizes (4);
+
+  fields[0].name = "radius";
+  fields[0].offset = 0;
+  fields[0].datatype = pcl::traits::asEnum<float>::value;
+  fields[0].count = 1;
+  fields_sizes[0] = sizeof (float);
+  fsize += fields_sizes[0];
+
+  fields[1].name = "indexed_theta";
+  fields[1].offset = fsize;
+  fields[1].datatype = pcl::traits::asEnum<uint16_t>::value;
+  fields[1].count = 1;
+  fields_sizes[1] = sizeof (uint16_t);
+  fsize += fields_sizes[1];
+
+  fields[2].name = "indexed_phi";
+  fields[2].offset = fsize;
+  fields[2].datatype = pcl::traits::asEnum<int16_t>::value;
+  fields[2].count = 1;
+  fields_sizes[2] = sizeof (int16_t);
+  fsize += fields_sizes[2];
+
+  fields[3].name = "intensity";
+  fields[3].offset = fsize;
+  fields[3].datatype = pcl::traits::asEnum<half_float::half>::value;
+  fields[3].count = 1;
+  fields_sizes[3] = sizeof (half_float::half);
+  fsize += fields_sizes[3];
+
+  const pcl::PCLPointField *x_field, *y_field, *z_field, *i_field;
   int rgb_index = -1;
   // Compute the total size of the fields except RGB
   for (size_t i = 0; i < cloud.fields.size (); ++i)
   {
-    if (cloud.fields[i].name == "_")
+    if (cloud.fields[i].name == "x")
+    {
+      x_field = &cloud.fields[i];
       continue;
+    }
 
+    if (cloud.fields[i].name == "y")
+    {
+      y_field = &cloud.fields[i];
+      continue;
+    }
+
+    if (cloud.fields[i].name == "z")
+    {
+      z_field = &cloud.fields[i];
+      continue;
+    }
+
+    if (cloud.fields[i].name == "i")
+    {
+      i_field = &cloud.fields[i];
+      continue;
+    }
+
+    if (cloud.fields[i].name == "_")
+      continue;    
+      
+    // We don't copy RGB field it is handled separately
     if ((cloud.fields[i].name == "rgb") || (cloud.fields[i].name == "rgba"))
     {
       rgb_index = i;
       continue;
     }
-
-    fields_sizes[nri] = cloud.fields[i].count * pcl::getFieldSize (cloud.fields[i].datatype);
-    fsize += fields_sizes[nri];
-    fields[nri] = cloud.fields[i];
-    ++nri;
   }
-  fields_sizes.resize (nri);
-  fields.resize (nri);
 
   std::vector<char*> pters;
   // Compute the size of data
-  if (rgb_index == -1)
-  {
-    pters = std::vector<char*> (fields.size ());
-    data_size = cloud.width * cloud.height * fsize;
-  }
-  else
-  {
-    data_size = cloud.width * cloud.height * (fsize - fields_sizes[rgb_index]);
-    pters = std::vector<char*> (fields.size () - 1);
-  }
+  pters = std::vector<char*> (fields.size ());
+  data_size = cloud.width * cloud.height * fsize;
+  std::cout << "original data size " << cloud.width * cloud.height * sizeof (leica::PointXYZI);
+  std::cout << std::endl;
+  std::cout << "data_size " << data_size << std::endl;
+  
   //////////////////////////////////////////////////////////////////////
   // Empty array holding only the valid data
   // data_size = nr_points * point_size
   //           = nr_points * (sizeof_field_1 + sizeof_field_2 + ... sizeof_field_n)
   //           = sizeof_field_1 * nr_points + sizeof_field_2 * nr_points + ... sizeof_field_n * nr_points
-  char *only_valid_data = static_cast<char*> (malloc (data_size));
 
   // Convert the XYZRGBXYZRGB structure to XXYYZZRGBRGB to aid compression. For
   // this, we need a vector of fields.size () (4 in this case), which points to
@@ -1467,24 +1569,90 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   //   pters[2] = &only_valid_data[offset_of_plane_z];
   //   pters[3] = &only_valid_data[offset_of_plane_RGB];
   //
-  int toff = 0;
+
+  std::vector<std::size_t> origins;
+  origins.reserve (cloud.width * cloud.height);
+  std::size_t effective_data = cloud.width * cloud.height;
+  for (size_t i = 0; i < cloud.width * cloud.height; ++i)
+  {
+    float x, y, z, intensity;
+    memcpy (&x, &cloud.data[i * cloud.point_step + x_field->offset], sizeof (float));
+    memcpy (&y, &cloud.data[i * cloud.point_step + y_field->offset], sizeof (float));
+    memcpy (&z, &cloud.data[i * cloud.point_step + z_field->offset], sizeof (float));
+    if ((x == 0) && (y == 0) && (z == 0))
+    {
+      origins.push_back (i);
+      --effective_data;
+    }
+  }
+  
+  data_size = effective_data * fsize;
+  std::size_t origins_size = (origins.size () + 1) * sizeof (std::size_t);
+  char *only_valid_data = static_cast<char*> (malloc (data_size + origins_size));
+  std::size_t nb_origins = origins.size ();
+  memcpy (only_valid_data, &nb_origins, sizeof (std::size_t));
+  memcpy (only_valid_data + sizeof (std::size_t), &origins[0], nb_origins * sizeof (std::size_t));
+  data_size+= origins_size;
+
+  int toff = origins_size;
   for (size_t i = 0; i < pters.size (); ++i)
   {
     pters[i] = &only_valid_data[toff];
-    toff += fields_sizes[i] * cloud.width * cloud.height;
+    toff += fields_sizes[i] * effective_data;
   }
 
+  // // Go over all the points, and copy the data in the appropriate places
+  // for (size_t i = 0; i < cloud.width * cloud.height; ++i)
+  // {
+  //   for (size_t j = 0; j < pters.size (); ++j)
+  //   {
+  //     leica::IndexedSpherical ip;
+      
+  //     memcpy (pters[j], &cloud.data[i * cloud.point_step + fields[j].offset], fields_sizes[j]);
+  //     // Increment the pointer
+  //     pters[j] += fields_sizes[j];
+  //   }
+  // }
+  std::ofstream indexed_spherical_file;
+  indexed_spherical_file.open ("indexed_spherical_write.txt");
+  std::vector<std::size_t>::const_iterator origin_index = origins.begin ();
   // Go over all the points, and copy the data in the appropriate places
   for (size_t i = 0; i < cloud.width * cloud.height; ++i)
   {
-    for (size_t j = 0; j < pters.size (); ++j)
+    if (i == *origin_index)
     {
-      memcpy (pters[j], &cloud.data[i * cloud.point_step + fields[j].offset], fields_sizes[j]);
-      // Increment the pointer
-      pters[j] += fields_sizes[j];
+      ++origin_index;
+      continue;
     }
+    
+    float x, y, z, intensity;
+    memcpy (&x, &cloud.data[i * cloud.point_step + x_field->offset], sizeof (float));
+    memcpy (&y, &cloud.data[i * cloud.point_step + y_field->offset], sizeof (float));
+    memcpy (&z, &cloud.data[i * cloud.point_step + z_field->offset], sizeof (float));
+    memcpy (&intensity, &cloud.data[i * cloud.point_step + i_field->offset], sizeof (float));
+    leica::IndexedSpherical ip (x, y, z, intensity);
+    indexed_spherical_file << "ip " << i << " " << ip.radius;
+    indexed_spherical_file << "," << ip.indexed_theta;
+    indexed_spherical_file << "," << ip.indexed_phi;
+    indexed_spherical_file << "," << ip.i << std::endl;
+    memcpy (pters[0], &(ip.radius), fields_sizes[0]);
+    memcpy (pters[1], &(ip.indexed_theta), fields_sizes[1]);
+    memcpy (pters[2], &(ip.indexed_phi), fields_sizes[2]);
+    memcpy (pters[3], &(ip.i), fields_sizes[3]);
+    pters[0]+= fields_sizes[0];
+    pters[1]+= fields_sizes[1];
+    pters[2]+= fields_sizes[2];
+    pters[3]+= fields_sizes[3];
   }
+  indexed_spherical_file.close ();
 
+  // std::cout << "writing origins " << std::endl;
+  // std::ofstream origins_file;
+  // origins_file.open ("origins_write.txt");
+  // for (std::size_t i = 0; i < origins.size (); ++i)
+  //   origins_file << origins[i] << std::endl;
+  // origins_file.close ();
+  
   opj_cparameters_t parameters;	/* compression parameters */
   opj_event_mgr_t event_mgr;		/* event manager */
   /*
@@ -1574,16 +1742,12 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
     {
       for (int j = 0; j < pters.size (); ++j)
       {
-        int32_t rgb;
-        memcpy (&rgb, &cloud.data[i * cloud.point_step + rgb_offset], sizeof (int32_t));
-        rgb = rgb >> 1;
-        uint8_t r = (rgb >> 16) & 0x0000ff;
-        uint8_t g = (rgb >> 8)  & 0x0000ff;
-        uint8_t b = (rgb)       & 0x0000ff;
+        leica::RGB rgb;
+        memcpy (&rgb, &cloud.data[i * cloud.point_step + rgb_offset], sizeof (leica::RGB));
 
-        image->comps[0].data[i]=r;
-        image->comps[1].data[i]=g;
-        image->comps[2].data[i]=b;
+        image->comps[0].data[i] = rgb.r;
+        image->comps[1].data[i] = rgb.g;
+        image->comps[2].data[i] = rgb.b;
       }
     }
 
@@ -1715,7 +1879,6 @@ leica::PTXWriter::writeBinaryCompressed (const std::string &file_name,
   {
     // Write out RGB
     memcpy (&map[data_size + data_idx], cio->buffer, codestream_length);
-
     /* close and free the byte stream */
     opj_cio_close(cio);
     /* free info*/

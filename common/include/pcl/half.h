@@ -2,7 +2,7 @@
  * Software License Agreement (BSD License)
  *
  *  Point Cloud Library (PCL) - www.pointclouds.org
- *  Copyright (c) 2010-2011, Willow Garage, Inc.
+ *  Copyright (c) 2013, Open Perception, Inc.
  *
  *  All rights reserved.
  *
@@ -35,40 +35,14 @@
  *
  */
 
-#ifndef LEICA_PTX_CLOUD_H
-#define LEICA_PTX_CLOUD_H
+///////////////////////////////////////////////////////////////
+// std::round_indeterminate      -1 fastest (default)        //
+// std::round_toward_zero         0 toward zero              //
+// std::round_to_nearest          1 to nearest               //
+// std::round_toward_infinity     2 toward positive infinity //
+// std::round_toward_neg_infinity 3 toward negative infinity //
+///////////////////////////////////////////////////////////////
 
-#include <pcl/point_cloud.h>
+#define HALF_ROUND_STYLE 1
 
-namespace leica
-{
-  template <typename PointT>
-  class PTXCloud : public pcl::PointCloud<PointT>
-  {
-    public:
-    typedef boost::shared_ptr<PTXCloud<PointT> > Ptr;
-    typedef boost::shared_ptr<const PTXCloud<PointT> > ConstPtr;
-
-    Eigen::Affine3f transformation_;
-  };
-
-  template <typename PointT> std::ostream&
-  operator << (std::ostream& s, const leica::PTXCloud<PointT> &p)
-  {
-    s << "points[]: " << p.points.size () << std::endl;
-    s << "width: " << p.width << std::endl;
-    s << "height: " << p.height << std::endl;
-    s << "is_dense: " << p.is_dense << std::endl;
-    s << "sensor origin (xyz): [" << p.sensor_origin_.x ();
-    s << ", " <<  p.sensor_origin_.y ();
-    s << ", " << p.sensor_origin_.z () << "]"; 
-    s <<" / orientation (xyzw): [" << p.sensor_orientation_.x ();
-    s << ", " << p.sensor_orientation_.y ();
-    s << ", " << p.sensor_orientation_.z ();
-    s << ", " << p.sensor_orientation_.w () << "]" << std::endl;
-    s << "cloud transformation: " << p.transformation.matrix () << std::endl;
-    return (s);
-  }
-}
-
-#endif
+#include <pcl/impl/half.hpp>

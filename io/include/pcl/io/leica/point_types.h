@@ -49,6 +49,10 @@ namespace leica
   struct PointXYZIRGB;
 
   struct RGB;
+
+  struct PointRTP;
+
+  struct IndexedSpherical;
 }
 
 #include <pcl/io/leica/impl/point_types.hpp>

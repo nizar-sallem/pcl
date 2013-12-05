@@ -46,6 +46,7 @@
 #include "pcl/pcl_macros.h"
 
 #include <pcl/PCLPointField.h>
+#include <pcl/half.h>
 #include <boost/type_traits/remove_all_extents.hpp>
 #include <boost/type_traits/is_same.hpp>
 #include <boost/mpl/assert.hpp>
@@ -73,6 +74,7 @@ namespace pcl
     template<> struct asEnum<uint32_t> { static const uint8_t value = pcl::PCLPointField::UINT32;  };
     template<> struct asEnum<float>    { static const uint8_t value = pcl::PCLPointField::FLOAT32; };
     template<> struct asEnum<double>   { static const uint8_t value = pcl::PCLPointField::FLOAT64; };
+    template<> struct asEnum<half_float::half> { static const uint8_t value = pcl::PCLPointField::FLOAT16; };
 
     // Metafunction to return type of enum value
     template<int> struct asType {};
@@ -84,6 +86,7 @@ namespace pcl
     template<> struct asType<pcl::PCLPointField::UINT32>  { typedef uint32_t type; };
     template<> struct asType<pcl::PCLPointField::FLOAT32> { typedef float    type; };
     template<> struct asType<pcl::PCLPointField::FLOAT64> { typedef double   type; };
+    template<> struct asType<pcl::PCLPointField::FLOAT16> { typedef half_float::half type; };
 
     // Metafunction to decompose a type (possibly of array of any number of dimensions) into
     // its scalar type and total number of elements.

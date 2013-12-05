@@ -2,7 +2,7 @@
  * Software License Agreement (BSD License)
  *
  *  Point Cloud Library (PCL) - www.pointclouds.org
- *  Copyright (c) 2010-2011, Willow Garage, Inc.
+ *  Copyright (c) 2013, Open Perception, Inc.
  *
  *  All rights reserved.
  *
@@ -35,40 +35,23 @@
  *
  */
 
-#ifndef LEICA_PTX_CLOUD_H
-#define LEICA_PTX_CLOUD_H
+#ifndef PCL_POINT_TRAITS_H_
+#define PCL_POINT_TRAITS_H_
 
-#include <pcl/point_cloud.h>
+#ifdef __GNUC__
+#pragma GCC system_header
+#endif
 
-namespace leica
+namespace pcl
 {
-  template <typename PointT>
-  class PTXCloud : public pcl::PointCloud<PointT>
+  namespace traits
   {
-    public:
-    typedef boost::shared_ptr<PTXCloud<PointT> > Ptr;
-    typedef boost::shared_ptr<const PTXCloud<PointT> > ConstPtr;
+    // Metafunction to return enum value representing a type
+    template<> struct asEnum<::leica::RGB>       { static const uint8_t value = pcl::PCLPointField::RGB; };
 
-    Eigen::Affine3f transformation_;
-  };
-
-  template <typename PointT> std::ostream&
-  operator << (std::ostream& s, const leica::PTXCloud<PointT> &p)
-  {
-    s << "points[]: " << p.points.size () << std::endl;
-    s << "width: " << p.width << std::endl;
-    s << "height: " << p.height << std::endl;
-    s << "is_dense: " << p.is_dense << std::endl;
-    s << "sensor origin (xyz): [" << p.sensor_origin_.x ();
-    s << ", " <<  p.sensor_origin_.y ();
-    s << ", " << p.sensor_origin_.z () << "]"; 
-    s <<" / orientation (xyzw): [" << p.sensor_orientation_.x ();
-    s << ", " << p.sensor_orientation_.y ();
-    s << ", " << p.sensor_orientation_.z ();
-    s << ", " << p.sensor_orientation_.w () << "]" << std::endl;
-    s << "cloud transformation: " << p.transformation.matrix () << std::endl;
-    return (s);
+    // Metafunction to return type of enum value
+    template<> struct asType<pcl::PCLPointField::RGB>     { typedef ::leica::RGB       type; };
   }
 }
 
-#endif
+#endif  //#ifndef PCL_POINT_TRAITS_H_

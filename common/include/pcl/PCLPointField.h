@@ -31,7 +31,9 @@ namespace pcl
                            INT32 = 5,
                            UINT32 = 6,
                            FLOAT32 = 7,
-                           FLOAT64 = 8 };
+                           FLOAT64 = 8,
+                           FLOAT16 = 9, 
+                           RGB = 10 };
 
   public:
     typedef boost::shared_ptr< ::pcl::PCLPointField> Ptr;
